@@ -1,0 +1,32 @@
+2. Flask Web Application
+Create a Flask web app with:
+- app.py (main Flask app)
+- templates/index.html
+- static/style.css
+- models.py (data models)
+- routes.py (API endpoints)
+- requirements.txt
+
+3. Data Processing Pipeline
+Create a data analysis script that:
+- Reads CSV files
+- Performs data cleaning
+- Generates visualizations
+- Exports results to JSON
+- Includes error handling
+
+4. CLI Tool
+Create a command-line tool that:
+- Accepts arguments and options
+- Processes files
+- Has help documentation
+- Includes logging
+- Can be installed as a package
+
+5. API Client Library
+Create a Python library that:
+- Makes HTTP requests
+- Handles authentication
+- Parses responses
+- Includes retry logic
+- Has proper error handling

@@ -9,17 +9,18 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from langgraph.checkpoint.memory import MemorySaver
 from .state import AgentState
+from .config import config
 
 
 class SimpleMemoryManager:
     """Simple memory manager for agent state persistence."""
     
-    def __init__(self, storage_dir: str = ".agent_memory"):
-        self.storage_dir = storage_dir
+    def __init__(self, storage_dir: str = None):
+        self.storage_dir = storage_dir or config.get_memory_storage_dir()
         self.memory_saver = MemorySaver()
         
         # Create storage directory if it doesn't exist
-        os.makedirs(storage_dir, exist_ok=True)
+        os.makedirs(self.storage_dir, exist_ok=True)
     
     def save_state(self, session_id: str, state: AgentState) -> bool:
         """Save agent state to memory."""

@@ -112,13 +112,16 @@ def edit_file(file_path: str, old_content: str, new_content: str) -> bool:
 
 
 @tool
-def run_command(command: str, timeout: int = 30) -> str:
+def run_command(command: str, timeout: int = None) -> str:
     """Run a shell command and return the output.
     
     Args:
         command: The shell command to execute
-        timeout: Timeout in seconds (default: 30)
+        timeout: Timeout in seconds (uses config default if not provided)
     """
+    if timeout is None:
+        timeout = config.get_command_timeout()
+    
     result = subprocess.run(
         command,
         shell=True,

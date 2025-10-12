@@ -24,6 +24,10 @@ class Config:
         self.default_model = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
         self.model_temperature = float(os.getenv("MODEL_TEMPERATURE", "0.0"))
         
+        # Tool settings
+        self.command_timeout = int(os.getenv("COMMAND_TIMEOUT", "30"))
+        self.memory_storage_dir = os.getenv("MEMORY_STORAGE_DIR", ".agent_memory")
+        
         # Ensure workspace directory exists
         self._ensure_workspace_exists()
     
@@ -52,6 +56,14 @@ class Config:
             "model_name": self.default_model,
             "temperature": self.model_temperature
         }
+    
+    def get_command_timeout(self) -> int:
+        """Get command timeout in seconds."""
+        return self.command_timeout
+    
+    def get_memory_storage_dir(self) -> str:
+        """Get memory storage directory path."""
+        return self.memory_storage_dir
     
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from environment."""
@@ -83,6 +95,8 @@ class Config:
         print(f"  Workspace Path: {self.workspace_path}")
         print(f"  Default Model: {self.default_model}")
         print(f"  Model Temperature: {self.model_temperature}")
+        print(f"  Command Timeout: {self.command_timeout}s")
+        print(f"  Memory Storage: {self.memory_storage_dir}")
         print(f"  OpenAI API Key: {'Set' if self.get_openai_api_key() else 'Not set'}")
 
 

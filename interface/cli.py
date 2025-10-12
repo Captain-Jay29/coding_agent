@@ -15,6 +15,7 @@ from rich.table import Table
 
 from src.agent import get_agent
 from src.memory import memory_manager
+from src.config import config
 
 
 console = Console()
@@ -39,6 +40,8 @@ def print_help():
     help_table.add_row("sessions", "List available sessions")
     help_table.add_row("session <id>", "Switch to a session")
     help_table.add_row("info", "Show current session info")
+    help_table.add_row("config", "Show current configuration")
+    help_table.add_row("multiline", "Enter multi-line input mode")
     help_table.add_row("clear", "Clear current session")
     help_table.add_row("quit/exit", "Exit the agent")
     help_table.add_row("", "")
@@ -92,6 +95,24 @@ def list_sessions():
     console.print(session_table)
 
 
+def get_multiline_input() -> str:
+    """Get multi-line input from user."""
+    console.print("[dim]Enter your request (press Ctrl+D or type 'END' on a new line when done):[/dim]")
+    lines = []
+    
+    try:
+        while True:
+            line = input()
+            if line.strip() == "END":
+                break
+            lines.append(line)
+    except EOFError:
+        # Ctrl+D pressed
+        pass
+    
+    return "\n".join(lines).strip()
+
+
 def handle_command(command: str) -> str:
     """Handle special commands. Returns 'quit', 'handled', or 'continue'."""
     cmd = command.strip().lower()
@@ -129,6 +150,28 @@ def handle_command(command: str) -> str:
             console.print("[green]Session cleared. Started new session.[/green]")
         return "handled"
     
+    elif cmd == "config":
+        config.print_config()
+        return "handled"
+    
+    elif cmd == "multiline":
+        console.print("[green]Multi-line input mode activated![/green]")
+        user_input = get_multiline_input()
+        if user_input:
+            # Process the multi-line input
+            agent = get_agent()
+            console.print("[dim]Processing...[/dim]")
+            try:
+                response = agent.process_message(user_input)
+                formatted_response = format_agent_response(response)
+                console.print(Panel(formatted_response, title="Agent", border_style="green"))
+            except Exception as e:
+                console.print(f"[red]Agent error: {e}[/red]")
+                console.print(f"[red]Error type: {type(e).__name__}[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+        return "handled"
+    
     elif cmd in ["quit", "exit"]:
         return "quit"
     
@@ -157,17 +200,22 @@ def format_agent_response(response: dict) -> str:
 
 @click.command()
 @click.option("--session-id", help="Start with specific session ID")
-@click.option("--model", default="gpt-4o-mini", help="OpenAI model to use")
+@click.option("--model", default=None, help="OpenAI model to use (overrides config)")
 def main(session_id: Optional[str], model: str):
     """Start the coding agent CLI."""
     
     # Check for OpenAI API key
-    if not os.getenv("OPENAI_API_KEY"):
+    if not config.get_openai_api_key():
         console.print("[red]Error: OPENAI_API_KEY environment variable not set[/red]")
         console.print("Please set your OpenAI API key: export OPENAI_API_KEY='your-key-here'")
         sys.exit(1)
     
-    # Initialize agent
+    # Validate configuration
+    if not config.validate_config():
+        console.print("[red]Configuration validation failed. Please check the errors above.[/red]")
+        sys.exit(1)
+    
+    # Initialize agent (use CLI model if provided, otherwise use config)
     agent = get_agent(model_name=model)
     
     # Start session
@@ -184,17 +232,13 @@ def main(session_id: Optional[str], model: str):
     while True:
         try:
             user_input = Prompt.ask("\n[bold blue]You[/bold blue]")
-            console.print(f"[dim]Debug: Received input: '{user_input}'[/dim]")
             
             # Handle special commands
             command_result = handle_command(user_input)
-            console.print(f"[dim]Debug: Command result: {command_result}[/dim]")
             
             if command_result == "quit":  # quit command
-                console.print("[dim]Debug: Breaking due to quit command[/dim]")
                 break
             elif command_result == "handled":  # special command handled
-                console.print("[dim]Debug: Special command handled, continuing[/dim]")
                 continue
             
             # Process with agent (only if not a special command)

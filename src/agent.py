@@ -99,7 +99,7 @@ class CodingAgent:
                 "session_id": self.current_session_id,
                 "metadata": {
                     "model": self.model.model_name,
-                    "timestamp": self.current_state["last_updated"].isoformat()
+                    "timestamp": self.current_state["last_updated"].isoformat() if hasattr(self.current_state["last_updated"], 'isoformat') else str(self.current_state["last_updated"])
                 }
             }
             
@@ -127,12 +127,20 @@ class CodingAgent:
         if not self.current_state:
             return {"error": "No active session"}
         
+        # Handle datetime objects that might be strings after JSON serialization
+        created_at = self.current_state["created_at"]
+        last_updated = self.current_state["last_updated"]
+        
+        # Convert to string if it's a datetime object, otherwise use as-is
+        created_at_str = created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at)
+        last_updated_str = last_updated.isoformat() if hasattr(last_updated, 'isoformat') else str(last_updated)
+        
         return {
             "session_id": self.current_session_id,
             "message_count": len(self.current_state["messages"]),
             "files_in_context": len(self.current_state["current_files"]),
-            "created_at": self.current_state["created_at"].isoformat(),
-            "last_updated": self.current_state["last_updated"].isoformat(),
+            "created_at": created_at_str,
+            "last_updated": last_updated_str,
             "last_error": self.current_state["last_error"]
         }
     
@@ -144,7 +152,7 @@ class CodingAgent:
 # Global agent instance - will be initialized when needed
 agent = None
 
-def get_agent(model_name: str = "gpt-4o-mini", temperature: float = 0.0) -> CodingAgent:
+def get_agent(model_name: str = None, temperature: float = None) -> CodingAgent:
     """Get or create the global agent instance."""
     global agent
     if agent is None:
