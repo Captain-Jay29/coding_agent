@@ -1,0 +1,221 @@
+"""
+Simple CLI interface for the coding agent.
+Provides colored output and basic interaction features.
+"""
+
+import os
+import sys
+from typing import Optional
+import click
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.prompt import Prompt, Confirm
+from rich.table import Table
+
+from src.agent import get_agent
+from src.memory import memory_manager
+
+
+console = Console()
+
+
+def print_welcome():
+    """Print welcome message."""
+    welcome_text = Text("🤖 Coding Agent", style="bold blue")
+    welcome_text.append("\nA simple agent for CRUD operations on codebases")
+    welcome_text.append("\nType 'help' for commands, 'quit' to exit")
+    
+    console.print(Panel(welcome_text, title="Welcome", border_style="blue"))
+
+
+def print_help():
+    """Print help information."""
+    help_table = Table(title="Available Commands")
+    help_table.add_column("Command", style="cyan")
+    help_table.add_column("Description", style="white")
+    
+    help_table.add_row("help", "Show this help message")
+    help_table.add_row("sessions", "List available sessions")
+    help_table.add_row("session <id>", "Switch to a session")
+    help_table.add_row("info", "Show current session info")
+    help_table.add_row("clear", "Clear current session")
+    help_table.add_row("quit/exit", "Exit the agent")
+    help_table.add_row("", "")
+    help_table.add_row("Or just type your request!", "The agent will help you with coding tasks")
+    
+    console.print(help_table)
+
+
+def print_session_info():
+    """Print current session information."""
+    agent = get_agent()
+    info = agent.get_session_info()
+    
+    if "error" in info:
+        console.print(f"[red]Error: {info['error']}[/red]")
+        return
+    
+    info_text = f"""
+Session ID: {info['session_id']}
+Messages: {info['message_count']}
+Files in context: {info['files_in_context']}
+Created: {info['created_at']}
+Last updated: {info['last_updated']}
+"""
+    
+    if info['last_error']:
+        info_text += f"Last error: {info['last_error']['error']}"
+    
+    console.print(Panel(info_text, title="Session Info", border_style="green"))
+
+
+def list_sessions():
+    """List available sessions."""
+    sessions = memory_manager.list_sessions()
+    
+    if not sessions:
+        console.print("[yellow]No sessions found.[/yellow]")
+        return
+    
+    session_table = Table(title="Available Sessions")
+    session_table.add_column("Session ID", style="cyan")
+    session_table.add_column("Status", style="white")
+    
+    agent = get_agent()
+    current_session = agent.current_session_id
+    
+    for session_id in sessions:
+        status = "Current" if session_id == current_session else "Available"
+        session_table.add_row(session_id[:8] + "...", status)
+    
+    console.print(session_table)
+
+
+def handle_command(command: str) -> str:
+    """Handle special commands. Returns 'quit', 'handled', or 'continue'."""
+    cmd = command.strip().lower()
+    
+    if cmd == "help":
+        print_help()
+        return "handled"
+    
+    elif cmd == "sessions":
+        list_sessions()
+        return "handled"
+    
+    elif cmd.startswith("session "):
+        session_id = command[8:].strip()
+        if session_id:
+            agent = get_agent()
+            agent.start_session(session_id)
+            console.print(f"[green]Switched to session: {session_id}[/green]")
+        else:
+            console.print("[red]Please provide a session ID[/red]")
+        return "handled"
+    
+    elif cmd == "info":
+        print_session_info()
+        return "handled"
+    
+    elif cmd == "clear":
+        if Confirm.ask("Are you sure you want to clear the current session?"):
+            agent = get_agent()
+            # Delete current session from memory
+            if agent.current_session_id:
+                memory_manager.delete_session(agent.current_session_id)
+            # Start completely new session
+            agent.start_session()
+            console.print("[green]Session cleared. Started new session.[/green]")
+        return "handled"
+    
+    elif cmd in ["quit", "exit"]:
+        return "quit"
+    
+    return "continue"
+
+
+def format_agent_response(response: dict) -> str:
+    """Format agent response for display."""
+    if not response["success"]:
+        error_text = f"[red]Error: {response['error']}[/red]"
+        if response.get("error_type"):
+            error_text += f"\n[dim]Type: {response['error_type']}[/dim]"
+        return error_text
+    
+    # Format successful response
+    response_text = response["response"]
+    
+    # Add metadata if available
+    if response.get("tool_calls"):
+        tool_calls = response["tool_calls"]
+        if tool_calls:
+            response_text += f"\n\n[dim]Tools used: {len(tool_calls)}[/dim]"
+    
+    return response_text
+
+
+@click.command()
+@click.option("--session-id", help="Start with specific session ID")
+@click.option("--model", default="gpt-4o-mini", help="OpenAI model to use")
+def main(session_id: Optional[str], model: str):
+    """Start the coding agent CLI."""
+    
+    # Check for OpenAI API key
+    if not os.getenv("OPENAI_API_KEY"):
+        console.print("[red]Error: OPENAI_API_KEY environment variable not set[/red]")
+        console.print("Please set your OpenAI API key: export OPENAI_API_KEY='your-key-here'")
+        sys.exit(1)
+    
+    # Initialize agent
+    agent = get_agent(model_name=model)
+    
+    # Start session
+    if session_id:
+        agent.start_session(session_id)
+        console.print(f"[green]Resumed session: {session_id}[/green]")
+    else:
+        session_id = agent.start_session()
+        console.print(f"[green]Started new session: {session_id}[/green]")
+    
+    print_welcome()
+    
+    # Main interaction loop
+    while True:
+        try:
+            user_input = Prompt.ask("\n[bold blue]You[/bold blue]")
+            console.print(f"[dim]Debug: Received input: '{user_input}'[/dim]")
+            
+            # Handle special commands
+            command_result = handle_command(user_input)
+            console.print(f"[dim]Debug: Command result: {command_result}[/dim]")
+            
+            if command_result == "quit":  # quit command
+                console.print("[dim]Debug: Breaking due to quit command[/dim]")
+                break
+            elif command_result == "handled":  # special command handled
+                console.print("[dim]Debug: Special command handled, continuing[/dim]")
+                continue
+            
+            # Process with agent (only if not a special command)
+            console.print("[dim]Processing...[/dim]")
+            try:
+                response = agent.process_message(user_input)
+                
+                # Display response
+                formatted_response = format_agent_response(response)
+                console.print(Panel(formatted_response, title="Agent", border_style="green"))
+            except Exception as e:
+                console.print(f"[red]Agent error: {e}[/red]")
+                console.print(f"[red]Error type: {type(e).__name__}[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+        
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Use 'quit' to exit gracefully[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Unexpected error: {e}[/red]")
+
+
+if __name__ == "__main__":
+    main()
