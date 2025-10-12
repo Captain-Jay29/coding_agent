@@ -112,22 +112,31 @@ def edit_file(file_path: str, old_content: str, new_content: str) -> bool:
 
 
 @tool
-def run_command(command: str, timeout: int = None) -> str:
+def run_command(command: str, timeout: int = None, working_dir: str = None) -> str:
     """Run a shell command and return the output.
+    
+    Commands execute in the workspace directory by default, making it easy to work with
+    files you've created. You can optionally specify a different working directory.
     
     Args:
         command: The shell command to execute
         timeout: Timeout in seconds (uses config default if not provided)
+        working_dir: Working directory for command execution (defaults to workspace path)
     """
     if timeout is None:
         timeout = config.get_command_timeout()
+    
+    # Default to workspace directory for command execution
+    if working_dir is None:
+        working_dir = str(config.get_workspace_path())
     
     result = subprocess.run(
         command,
         shell=True,
         capture_output=True,
         text=True,
-        timeout=timeout
+        timeout=timeout,
+        cwd=working_dir
     )
     
     if result.returncode != 0:

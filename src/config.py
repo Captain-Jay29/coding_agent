@@ -28,6 +28,9 @@ class Config:
         self.command_timeout = int(os.getenv("COMMAND_TIMEOUT", "30"))
         self.memory_storage_dir = os.getenv("MEMORY_STORAGE_DIR", ".agent_memory")
         
+        # Agent settings
+        self.max_history_messages = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
+        
         # Ensure workspace directory exists
         self._ensure_workspace_exists()
     
@@ -65,6 +68,10 @@ class Config:
         """Get memory storage directory path."""
         return self.memory_storage_dir
     
+    def get_max_history_messages(self) -> int:
+        """Get maximum number of history messages to pass to agent."""
+        return self.max_history_messages
+    
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from environment."""
         return os.getenv("OPENAI_API_KEY")
@@ -97,6 +104,7 @@ class Config:
         print(f"  Model Temperature: {self.model_temperature}")
         print(f"  Command Timeout: {self.command_timeout}s")
         print(f"  Memory Storage: {self.memory_storage_dir}")
+        print(f"  Max History Messages: {self.max_history_messages}")
         print(f"  OpenAI API Key: {'Set' if self.get_openai_api_key() else 'Not set'}")
 
 

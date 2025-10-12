@@ -38,12 +38,28 @@ class CodingAgent:
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a helpful coding assistant. You can create, read, edit, and execute files.
             
-            When asked to create files, always use the write_file tool.
-            When asked to read files, use the read_file tool.
-            When asked to edit files, use the edit_file tool.
-            When asked to run commands, use the run_command tool.
+            WORKSPACE CONTEXT:
+            - You are working in a dedicated workspace directory
+            - All files you create are stored in this workspace
+            - Commands (like pytest, python, etc.) execute FROM the workspace directory
+            - When running commands, use relative paths from the workspace (e.g., "pytest calculator/tests.py")
+            
+            AVAILABLE TOOLS:
+            - write_file: Create or overwrite files (paths are relative to workspace)
+            - read_file: Read file contents (paths are relative to workspace)
+            - edit_file: Modify existing files (paths are relative to workspace)
+            - run_command: Execute shell commands (runs IN the workspace directory)
+            - list_files: List files matching a pattern
+            - file_exists: Check if a file exists
+            - get_file_info: Get file metadata
+            
+            CONVERSATION CONTEXT:
+            - When users reference files from previous messages (like "that file" or "operations.py"), 
+              look at the conversation history to find the exact file path you used before
+            - Remember what files you've created and where they are
             
             Always provide clear feedback about what you're doing."""),
+            ("placeholder", "{chat_history}"),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ])
@@ -78,8 +94,22 @@ class CodingAgent:
             # Add user message to state
             self.current_state["messages"].append(HumanMessage(content=user_input))
             
-            # Process with the agent executor
-            response = self.agent_executor.invoke({"input": user_input})
+            # Get chat history with sliding window to prevent token overflow
+            # Exclude the current message we just added
+            max_history = config.get_max_history_messages()
+            all_messages = self.current_state["messages"][:-1]
+            
+            # Apply sliding window - take only recent messages
+            if len(all_messages) > max_history:
+                chat_history = all_messages[-max_history:]
+            else:
+                chat_history = all_messages
+            
+            # Process with the agent executor, passing chat history
+            response = self.agent_executor.invoke({
+                "input": user_input,
+                "chat_history": chat_history
+            })
             
             # Extract the response
             response_text = response.get("output", "No response generated")

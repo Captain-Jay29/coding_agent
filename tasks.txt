@@ -1,3 +1,10 @@
+Create a Python package called "calculator" with:
+- __init__.py file
+- calculator.py with Calculator class
+- operations.py with basic math operations
+- tests.py with unit tests
+- requirements.txt
+
 2. Flask Web Application
 Create a Flask web app with:
 - app.py (main Flask app)
