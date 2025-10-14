@@ -31,6 +31,11 @@ class Config:
         # Agent settings
         self.max_history_messages = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
         
+        # Git settings
+        self.git_enabled = os.getenv("GIT_ENABLED", "true").lower() == "true"
+        self.git_auto_push = os.getenv("GIT_AUTO_PUSH", "false").lower() == "true"
+        self.git_main_branch = os.getenv("GIT_MAIN_BRANCH", "main")
+        
         # Ensure workspace directory exists
         self._ensure_workspace_exists()
     
@@ -72,6 +77,18 @@ class Config:
         """Get maximum number of history messages to pass to agent."""
         return self.max_history_messages
     
+    def get_git_enabled(self) -> bool:
+        """Check if Git operations are enabled."""
+        return self.git_enabled
+    
+    def get_git_auto_push(self) -> bool:
+        """Check if automatic push is enabled (not recommended)."""
+        return self.git_auto_push
+    
+    def get_git_main_branch(self) -> str:
+        """Get the main branch name (protected from direct pushes)."""
+        return self.git_main_branch
+    
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from environment."""
         return os.getenv("OPENAI_API_KEY")
@@ -105,6 +122,9 @@ class Config:
         print(f"  Command Timeout: {self.command_timeout}s")
         print(f"  Memory Storage: {self.memory_storage_dir}")
         print(f"  Max History Messages: {self.max_history_messages}")
+        print(f"  Git Enabled: {self.git_enabled}")
+        print(f"  Git Auto-Push: {self.git_auto_push}")
+        print(f"  Git Main Branch: {self.git_main_branch}")
         print(f"  OpenAI API Key: {'Set' if self.get_openai_api_key() else 'Not set'}")
 
 

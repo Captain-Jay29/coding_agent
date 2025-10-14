@@ -1,6 +1,6 @@
 # Coding Agent
 
-A powerful coding agent built with LangChain that can perform CRUD operations on codebases through natural conversation with contextual awareness and workspace management.
+A powerful coding agent built with LangChain that can perform CRUD operations on codebases through natural conversation with real-time streaming, contextual awareness, and workspace management.
 
 ## Quick Start
 
@@ -27,7 +27,11 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 
 4. **Run the agent:**
    ```bash
+   # With streaming (default)
    python main.py
+   
+   # Without streaming
+   python main.py --no-stream
    ```
 
 ## Features
@@ -39,6 +43,7 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 - **Code Testing**: Run tests, linting, and validation
 
 ### 🧠 **Intelligence Features**
+- **Real-time Streaming**: Token-by-token streaming with live tool execution feedback
 - **Contextual Awareness**: Remembers conversation history and file context
 - **Smart Path Resolution**: Automatically handles file paths and workspace navigation
 - **Multi-line Input**: Support for complex, multi-line requests
@@ -104,6 +109,32 @@ Agent: I'll run the tests to verify everything works.
 📤 Output: 7 tests passed!
 ```
 
+### **Real-time Streaming**
+```
+You: Create a data pipeline script with pandas
+
+Agent: [Processing...]
+
+🛠️  Using tool: write_file
+✅ Tool completed: write_file
+
+I'll create a data processing pipeline script...
+[Response streams token-by-token with real-time feedback]
+
+You: Install the dependencies and run it
+
+Agent: [Processing...]
+
+🛠️  Using tool: write_file
+✅ Tool completed: write_file
+
+🛠️  Using tool: run_command
+✅ Tool completed: run_command
+
+Dependencies installed! The script is ready...
+[Tokens appear as they're generated]
+```
+
 ### **Advanced Features**
 ```
 You: multiline
@@ -136,6 +167,15 @@ Agent: I'll create a complete Flask web application for you.
 | `multiline` | Enter multi-line input mode |
 | `clear` | Clear current session |
 | `quit/exit` | Exit the agent |
+
+### CLI Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--stream` | Enabled | Enable real-time streaming output |
+| `--no-stream` | - | Disable streaming (traditional mode) |
+| `--model <name>` | From config | Override model selection |
+| `--session-id <id>` | New session | Resume specific session |
 
 ## Configuration Options
 
@@ -172,6 +212,12 @@ coding-agent/
 
 ## Key Improvements
 
+### **Real-time Streaming**
+- Token-by-token streaming for natural conversation flow
+- Live tool execution feedback with emoji indicators (🛠️ ✅)
+- Immediate visibility into agent's reasoning and actions
+- Graceful fallback to non-streaming mode available
+
 ### **Contextual Awareness**
 - Agent remembers conversation history and file context
 - Understands references like "that file" or "operations.py"
@@ -202,7 +248,14 @@ This implementation follows the "Build Small, Ship Fast" philosophy with increme
 - **Phase 2**: Contextual awareness ✅
 - **Phase 3**: Workspace management ✅
 - **Phase 4**: Enhanced CLI ✅
-- **Phase 5**: Advanced features (in progress)
+- **Phase 5**: Real-time streaming ✅
+- **Phase 6**: Advanced features (in progress)
+
+### **Technical Stack**
+- **Framework**: LangChain (AgentExecutor with tool calling)
+- **Streaming**: LangChain's `astream_events()` API
+- **State Management**: In-memory with JSON persistence
+- **CLI**: Rich + Click with async support
 
 See `coding-agent-design.md` for the full design document and roadmap.
 
@@ -227,3 +280,8 @@ See `coding-agent-design.md` for the full design document and roadmap.
 - Ensure `.env` file is in project root
 - Check that environment variables are properly set
 - Use `config` command to verify current settings
+
+**Streaming issues:**
+- If streaming appears slow or buffered, this is normal token-by-token behavior
+- Use `--no-stream` flag if you prefer traditional batch responses
+- Streaming requires async support (Python 3.7+)

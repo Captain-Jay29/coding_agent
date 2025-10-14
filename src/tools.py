@@ -12,6 +12,7 @@ from datetime import datetime
 from langchain_core.tools import tool
 from .state import ToolResult
 from .config import config
+from .git_tools import GIT_TOOLS
 
 
 def _resolve_path(file_path: str) -> str:
@@ -191,6 +192,7 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
 
 # Tool registry for the agent
 TOOLS = [
+    # File operations
     read_file,
     write_file,
     edit_file,
@@ -198,4 +200,6 @@ TOOLS = [
     list_files,
     file_exists,
     get_file_info,
+    # Git operations
+    *GIT_TOOLS,
 ]

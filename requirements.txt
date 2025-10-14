@@ -11,6 +11,9 @@ rich>=13.0.0  # For colored output and better formatting
 # Configuration management
 python-dotenv>=1.0.0
 
+# Git integration
+gitpython>=3.1.40
+
 # Optional: LangSmith for evaluation (can be added later)
 # langsmith>=0.1.0
 

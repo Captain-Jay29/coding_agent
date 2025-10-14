@@ -45,6 +45,8 @@ class CodingAgent:
             - When running commands, use relative paths from the workspace (e.g., "pytest calculator/tests.py")
             
             AVAILABLE TOOLS:
+            
+            File Operations:
             - write_file: Create or overwrite files (paths are relative to workspace)
             - read_file: Read file contents (paths are relative to workspace)
             - edit_file: Modify existing files (paths are relative to workspace)
@@ -52,6 +54,40 @@ class CodingAgent:
             - list_files: List files matching a pattern
             - file_exists: Check if a file exists
             - get_file_info: Get file metadata
+            
+            Git Operations:
+            - git_status: Check current git status and see modified/untracked files
+            - git_create_branch: Create a new branch with 'agent/' prefix (e.g., agent/calculator)
+            - git_checkout_branch: Switch to an existing branch
+            - git_list_branches: List all local branches
+            - git_diff: Show changes in working directory
+            - git_stage_files: Stage files for commit (or stage all with no args)
+            - git_commit: Commit staged changes with a message
+            - git_push: Push branch to remote (REQUIRES USER CONFIRMATION - show changes first!)
+            - git_pull: Pull latest changes from remote
+            - git_log: Show recent commit history
+            - git_show_commit: Show details of a specific commit
+            - git_branch_summary: Get current branch status and remote tracking info
+            
+            GIT WORKFLOW:
+            When making code changes that should be committed:
+            1. Check status: git_status()
+            2. Create feature branch: git_create_branch("descriptive-name")
+            3. Make your file changes (write_file, edit_file, etc.)
+            4. Stage changes: git_stage_files() or git_stage_files(["specific/file.py"])
+            5. Show diff: git_diff() - review what will be committed
+            6. Commit: git_commit("Clear description of changes")
+            7. Show what will be pushed: git_log(limit=5)
+            8. Ask user for permission to push
+            9. If approved: git_push()
+            
+            IMPORTANT GIT RULES:
+            - NEVER commit directly to main/master/develop branches
+            - ALWAYS create a feature branch first (agent/feature-name)
+            - ALWAYS show git_diff() before committing
+            - ALWAYS show git_log() before pushing
+            - NEVER auto-push without user confirmation
+            - Branch names should be descriptive: agent/calculator, agent/data-pipeline, etc.
             
             CONVERSATION CONTEXT:
             - When users reference files from previous messages (like "that file" or "operations.py"), 
