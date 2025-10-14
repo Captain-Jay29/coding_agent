@@ -5,6 +5,7 @@ Provides colored output and basic interaction features.
 
 import os
 import sys
+import asyncio
 from typing import Optional
 import click
 from rich.console import Console
@@ -12,6 +13,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
+from rich.live import Live
+from rich.spinner import Spinner
 
 from src.agent import get_agent
 from src.memory import memory_manager
@@ -178,6 +181,58 @@ def handle_command(command: str) -> str:
     return "continue"
 
 
+async def process_streaming_response(agent, user_input: str):
+    """Process agent response with streaming for real-time feedback."""
+    console.print("[dim]Processing...[/dim]\n")
+    
+    response_text = ""
+    current_tool = None
+    
+    try:
+        async for event in agent.astream_response(user_input):
+            event_type = event.get("event")
+            
+            # Handle different event types
+            if event_type == "on_chat_model_stream":
+                # Stream tokens as they arrive
+                content = event["data"]["chunk"].content
+                if content:
+                    console.print(content, end="", style="green")
+                    response_text += content
+            
+            elif event_type == "on_tool_start":
+                # Show tool invocation
+                tool_name = event.get("name", "unknown")
+                current_tool = tool_name
+                console.print(f"\n\n[dim]🛠️  Using tool: {tool_name}[/dim]")
+            
+            elif event_type == "on_tool_end":
+                # Show tool completion
+                if current_tool:
+                    console.print(f"[dim]✅ Tool completed: {current_tool}[/dim]\n")
+                    current_tool = None
+            
+            elif event_type == "on_complete":
+                # Streaming completed successfully
+                console.print("\n")
+                return True
+            
+            elif event_type == "on_error":
+                # Handle errors
+                error_data = event.get("data", {})
+                console.print(f"\n\n[red]❌ Error: {error_data.get('error', 'Unknown error')}[/red]")
+                console.print(f"[dim]Type: {error_data.get('error_type', 'Unknown')}[/dim]")
+                return False
+        
+        return True
+        
+    except Exception as e:
+        console.print(f"\n\n[red]Streaming error: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        return False
+
+
 def format_agent_response(response: dict) -> str:
     """Format agent response for display."""
     if not response["success"]:
@@ -201,7 +256,8 @@ def format_agent_response(response: dict) -> str:
 @click.command()
 @click.option("--session-id", help="Start with specific session ID")
 @click.option("--model", default=None, help="OpenAI model to use (overrides config)")
-def main(session_id: Optional[str], model: str):
+@click.option("--stream/--no-stream", default=True, help="Enable streaming mode (default: enabled)")
+def main(session_id: Optional[str], model: str, stream: bool):
     """Start the coding agent CLI."""
     
     # Check for OpenAI API key
@@ -242,13 +298,18 @@ def main(session_id: Optional[str], model: str):
                 continue
             
             # Process with agent (only if not a special command)
-            console.print("[dim]Processing...[/dim]")
             try:
-                response = agent.process_message(user_input)
-                
-                # Display response
-                formatted_response = format_agent_response(response)
-                console.print(Panel(formatted_response, title="Agent", border_style="green"))
+                if stream:
+                    # Use streaming mode
+                    asyncio.run(process_streaming_response(agent, user_input))
+                else:
+                    # Use non-streaming mode
+                    console.print("[dim]Processing...[/dim]")
+                    response = agent.process_message(user_input)
+                    
+                    # Display response
+                    formatted_response = format_agent_response(response)
+                    console.print(Panel(formatted_response, title="Agent", border_style="green"))
             except Exception as e:
                 console.print(f"[red]Agent error: {e}[/red]")
                 console.print(f"[red]Error type: {type(e).__name__}[/red]")
