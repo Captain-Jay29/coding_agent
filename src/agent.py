@@ -5,7 +5,7 @@ Simplified version without LangGraph for MVP testing.
 
 import os
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, AsyncIterator
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
@@ -151,6 +151,90 @@ class CodingAgent:
                 }
             
             return error_response
+    
+    async def astream_response(self, user_input: str) -> AsyncIterator[Dict[str, Any]]:
+        """Stream agent response with events for real-time feedback.
+        
+        Yields events including:
+        - on_chat_model_stream: Token-by-token LLM output
+        - on_tool_start: Tool invocation begins
+        - on_tool_end: Tool execution completes
+        - on_chain_start/end: Agent reasoning steps
+        """
+        if not self.current_session_id:
+            self.start_session()
+        
+        try:
+            # Add user message to state
+            self.current_state["messages"].append(HumanMessage(content=user_input))
+            
+            # Get chat history with sliding window
+            max_history = config.get_max_history_messages()
+            all_messages = self.current_state["messages"][:-1]
+            
+            if len(all_messages) > max_history:
+                chat_history = all_messages[-max_history:]
+            else:
+                chat_history = all_messages
+            
+            # Track response content for saving
+            response_content = ""
+            
+            # Stream events from agent executor
+            async for event in self.agent_executor.astream_events(
+                {
+                    "input": user_input,
+                    "chat_history": chat_history
+                },
+                version="v1"
+            ):
+                # Yield the event to the caller
+                yield event
+                
+                # Collect response content from chat model streams
+                if event["event"] == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    if content:
+                        response_content += content
+            
+            # After streaming completes, update state
+            if response_content:
+                self.current_state["messages"].append(AIMessage(content=response_content))
+            
+            # Update state timestamp
+            self.current_state = update_state_timestamp(self.current_state)
+            
+            # Save state
+            memory_manager.save_state(self.current_session_id, self.current_state)
+            
+            # Yield completion event
+            yield {
+                "event": "on_complete",
+                "data": {
+                    "success": True,
+                    "session_id": self.current_session_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+            }
+            
+        except Exception as e:
+            # Yield error event
+            yield {
+                "event": "on_error",
+                "data": {
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "session_id": self.current_session_id
+                }
+            }
+            
+            # Update state with error
+            if self.current_state:
+                self.current_state["last_error"] = {
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "timestamp": datetime.now().isoformat()
+                }
     
     def get_session_info(self) -> Dict[str, Any]:
         """Get information about the current session."""
