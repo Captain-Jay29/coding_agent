@@ -14,8 +14,8 @@ python-dotenv>=1.0.0
 # Git integration
 gitpython>=3.1.40
 
-# Optional: LangSmith for evaluation (can be added later)
-# langsmith>=0.1.0
+# LangSmith for evaluation and tracing
+langsmith>=0.1.0
 
 # Development dependencies
 pytest>=7.0.0

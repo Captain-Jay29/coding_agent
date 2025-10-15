@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.prompts import ChatPromptTemplate
+from langsmith import traceable
 
 from .tools import TOOLS
 from .state import AgentState, create_initial_state, update_state_timestamp
@@ -121,6 +122,7 @@ class CodingAgent:
         
         return session_id
     
+    @traceable(run_type="chain", name="process_message")
     def process_message(self, user_input: str) -> Dict[str, Any]:
         """Process a user message and return agent response."""
         if not self.current_session_id:
@@ -188,6 +190,7 @@ class CodingAgent:
             
             return error_response
     
+    @traceable(run_type="chain", name="astream_response")
     async def astream_response(self, user_input: str) -> AsyncIterator[Dict[str, Any]]:
         """Stream agent response with events for real-time feedback.
         
