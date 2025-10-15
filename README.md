@@ -56,6 +56,20 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 - **Rich CLI**: Clean, colored interface with helpful commands
 - **Git Integration**: Create branches, commit changes, and push to remote repositories
 
+### 🌐 **Web UI**
+- **Modern Interface**: Next.js + FastAPI with real-time streaming
+- **Two-Column Layout**: Chat + File Tree + Metrics in card-based design
+- **Live Metrics**: Session stats with 2x2 grid (Turn, Messages, Files, Latency)
+- **SSE Streaming**: Server-Sent Events for token-by-token updates
+- **Session Controls**: Create, switch, and manage sessions visually
+
+### 📊 **Evaluation & Observability**
+- **LangSmith Integration**: Full tracing and evaluation framework
+- **Rich Metadata**: Track latency, tool usage, session context, and success metrics
+- **Test Suite**: 20+ test cases across 7 categories (CRUD, multi-file, error handling)
+- **Custom Evaluators**: 7 specialized evaluation functions for agent performance
+- **Smart Tagging**: Automatic categorization by task type, complexity, and tool usage
+
 ## Usage Examples
 
 ### **Simple File Operations**
@@ -217,6 +231,142 @@ All settings can be configured via `.env` file or environment variables:
 | `GIT_ENABLED` | `true` | Enable Git operations |
 | `GIT_AUTO_PUSH` | `false` | Auto-push without confirmation (not recommended) |
 | `GIT_MAIN_BRANCH` | `main` | Protected main branch name |
+| `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
+| `LANGSMITH_API_KEY` | - | LangSmith API key |
+| `LANGSMITH_ENDPOINT` | `https://api.smith.langchain.com` | LangSmith API endpoint |
+| `LANGSMITH_PROJECT` | - | LangSmith project name |
+
+## Web UI
+
+A modern web interface for the coding agent with real-time streaming and visual workspace management.
+
+### Quick Start
+
+**1. Start the Backend:**
+```bash
+cd web_ui/backend
+source ../../venv/bin/activate  # or your venv path
+python server.py
+```
+Backend runs on `http://localhost:8000`
+
+**2. Start the Frontend:**
+```bash
+cd web_ui/frontend
+npm install  # first time only
+npm run dev
+```
+Frontend runs on `http://localhost:3000`
+
+**3. Open in Browser:**
+Navigate to `http://localhost:3000` and start chatting with the agent!
+
+### Features
+
+**Left Column - Chat Interface:**
+- Real-time streaming responses (SSE)
+- Token-by-token display with smooth updates
+- Clean gradient message bubbles
+- Session management controls
+- Auto-scroll to latest messages
+
+**Right Column - File Tree (Top):**
+- Live workspace directory structure
+- Expandable/collapsible folders
+- File size display
+- Auto-refresh every 3 seconds
+
+**Right Column - Metrics Panel (Bottom):**
+- **2x2 Grid Display**: Turn, Messages, Files, Latency
+- Running average latency (last 10 responses)
+- Real-time session statistics
+- Auto-refresh every 2 seconds
+
+### API Endpoints
+
+- `POST /api/chat` - Stream agent responses (SSE)
+- `GET /api/workspace/tree` - Get directory structure
+- `GET /api/metrics/{session_id}` - Get session metrics
+- `POST /api/sessions` - Create new session
+- `GET /api/health` - Health check
+
+See `web_ui/README.md` for detailed documentation.
+
+## Evaluation & LangSmith
+
+Comprehensive evaluation framework with LangSmith integration for tracing, metrics, and performance analysis.
+
+### Setup LangSmith
+
+**1. Configure environment variables:**
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-api-key
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_PROJECT=coding_agent
+```
+
+**2. Create evaluation dataset:**
+```bash
+python evals/create_langsmith_dataset.py
+```
+
+**3. Run evaluations:**
+```bash
+python evals/run_evals.py
+```
+
+### Tracked Metrics
+
+All agent runs are automatically tracked with rich metadata:
+
+| Metric | Description |
+|--------|-------------|
+| `session_id` | Unique session identifier |
+| `turn_number` | Current conversation turn |
+| `message_count` | Total messages in session |
+| `has_conversation_history` | Whether prior context exists |
+| `files_in_context` | Number of files being tracked |
+| `has_file_context` | Whether files are in context |
+| `tool_call_count` | Number of tools used |
+| `latency_seconds` | Response time |
+| `success` | Whether operation succeeded |
+| `model` | LLM model used |
+| `temperature` | Model temperature |
+| `input_length` | User input length |
+| `response_length` | Agent response length |
+| `error_type` | Error category if failed |
+
+### Smart Tagging
+
+Runs are automatically tagged by:
+- **Task Type**: `file-operations`, `shell-commands`, `multi-file`, `git-operations`
+- **Complexity**: `simple`, `moderate`, `complex`
+- **Tool Usage**: `no-tools`, `single-tool`, `multi-tool`
+- **Session State**: `first-turn`, `multi-turn`, `has-context`
+- **Outcome**: `success`, `error-{type}`
+
+### Test Coverage
+
+**20+ Test Cases across 7 categories:**
+1. Basic CRUD operations
+2. Multi-file projects
+3. Error handling
+4. Complex workflows
+5. Edge cases
+6. Shell commands
+7. Git operations
+
+**7 Custom Evaluators:**
+- File creation validation
+- Content correctness
+- Multi-file completeness
+- Command execution success
+- Error handling quality
+- Git workflow validation
+- Overall task success
+
+See `evals/README.md` and `docs/langsmith_metrics.md` for detailed documentation.
 
 ## Project Structure
 
@@ -231,9 +381,29 @@ coding-agent/
 │   └── config.py         # Configuration management
 ├── interface/
 │   └── cli.py            # Rich CLI interface with multi-line support
+├── web_ui/
+│   ├── backend/
+│   │   ├── server.py     # FastAPI backend with SSE streaming
+│   │   ├── test_server.py # Backend test suite
+│   │   └── README.md     # Backend documentation
+│   ├── frontend/
+│   │   ├── app/          # Next.js app directory
+│   │   ├── components/   # React components (Chat, FileTree, Metrics)
+│   │   └── README.md     # Frontend documentation
+│   └── README.md         # Web UI overview
+├── evals/
+│   ├── datasets/
+│   │   └── test_cases.py # 20+ test cases across 7 categories
+│   ├── create_langsmith_dataset.py # Upload test cases to LangSmith
+│   ├── run_evals.py      # Execute evaluation suite
+│   ├── evaluators.py     # Custom evaluation functions
+│   └── README.md         # Evaluation documentation
+├── docs/
+│   ├── langsmith_metrics.md # LangSmith metrics documentation
+│   └── streaming_guidelines.md # Streaming implementation guide
 ├── agent_runs/           # Default workspace directory
 ├── .agent_memory/        # Session storage
-├── main.py               # Entry point
+├── main.py               # CLI entry point
 ├── requirements.txt       
 ├── .env                  # Configuration file (optional)
 └── README.md
@@ -286,13 +456,27 @@ This implementation follows the "Build Small, Ship Fast" philosophy with increme
 - **Phase 4**: Enhanced CLI ✅
 - **Phase 5**: Real-time streaming ✅
 - **Phase 6**: Git integration ✅
-- **Phase 7**: Advanced features (in progress)
+- **Phase 7**: LangSmith evaluation framework ✅
+- **Phase 8**: Web UI (Next.js + FastAPI) ✅
+- **Phase 9**: Advanced features (future)
 
 ### **Technical Stack**
+
+**Core Agent:**
 - **Framework**: LangChain (AgentExecutor with tool calling)
 - **Streaming**: LangChain's `astream_events()` API
 - **State Management**: In-memory with JSON persistence
 - **CLI**: Rich + Click with async support
+
+**Web UI:**
+- **Frontend**: Next.js 15, TypeScript, Tailwind CSS
+- **Backend**: FastAPI, Uvicorn, Server-Sent Events (SSE)
+- **Integration**: Reuses core agent logic from `src/`
+
+**Evaluation:**
+- **Tracing**: LangSmith with rich metadata and smart tagging
+- **Testing**: Custom evaluators for 20+ test cases
+- **Metrics**: Latency, tool usage, success rate, context tracking
 
 See `coding-agent-design.md` for the full design document and roadmap.
 
@@ -329,3 +513,16 @@ See `coding-agent-design.md` for the full design document and roadmap.
 - Requires Git installed and configured with credentials (SSH keys or tokens)
 - All commits use your local Git identity (from `~/.gitconfig`)
 - To work with different repos, change `WORKSPACE_PATH` and restart the agent
+
+**Web UI issues:**
+- **Backend not starting**: Verify `.env` file has `OPENAI_API_KEY` and dependencies are installed
+- **Frontend can't connect**: Ensure backend is running on port 8000 before starting frontend
+- **CORS errors**: Backend must be on port 8000, frontend on port 3000
+- **Streaming not working**: Check browser network tab for `text/event-stream` content type
+- **Metrics not showing**: Send at least one message to create session data
+
+**LangSmith tracing:**
+- **No traces appearing**: Verify `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` are set
+- **Incomplete metadata**: Ensure you're using the latest version of the agent
+- **Streaming runs failing**: Make sure message serialization is working (check `src/memory.py`)
+- **Dataset creation fails**: Run `python evals/create_langsmith_dataset.py` from project root
