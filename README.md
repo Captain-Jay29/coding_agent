@@ -54,6 +54,7 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 - **Configuration Management**: Flexible settings via environment variables
 - **Error Handling**: Graceful error recovery with detailed feedback
 - **Rich CLI**: Clean, colored interface with helpful commands
+- **Git Integration**: Create branches, commit changes, and push to remote repositories
 
 ## Usage Examples
 
@@ -155,6 +156,29 @@ Agent: I'll create a complete Flask web application for you.
 ✅ Created: requirements.txt
 ```
 
+### **Git Integration**
+```
+You: Create a new calculator package and commit it to a branch
+
+Agent: I'll create the calculator package and set up a Git branch.
+
+✅ Created branch: agent/calculator
+✅ Created: calculator/__init__.py
+✅ Created: calculator/calculator.py
+✅ Created: calculator/operations.py
+✅ Staged all changes
+✅ Committed: "Add calculator package with basic operations"
+
+📊 Ready to push. The following commits will be pushed:
+  a1b2c3d - Add calculator package with basic operations
+
+May I push this branch to remote? (I'll wait for your confirmation)
+
+You: Yes, push it
+
+Agent: ✅ Pushed branch 'agent/calculator' to remote
+```
+
 ## Available Commands
 
 | Command | Description |
@@ -183,12 +207,16 @@ All settings can be configured via `.env` file or environment variables:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `OPENAI_API_KEY` |  | OpenAI API Key |
 | `WORKSPACE_PATH` | `./agent_runs` | Directory for all agent work |
 | `DEFAULT_MODEL` | `gpt-4o-mini` | OpenAI model to use |
 | `MODEL_TEMPERATURE` | `0.0` | Model temperature (0-1) |
 | `MAX_HISTORY_MESSAGES` | `20` | Conversation history limit |
 | `COMMAND_TIMEOUT` | `30` | Command execution timeout (seconds) |
 | `MEMORY_STORAGE_DIR` | `.agent_memory` | Session storage directory |
+| `GIT_ENABLED` | `true` | Enable Git operations |
+| `GIT_AUTO_PUSH` | `false` | Auto-push without confirmation (not recommended) |
+| `GIT_MAIN_BRANCH` | `main` | Protected main branch name |
 
 ## Project Structure
 
@@ -196,17 +224,18 @@ All settings can be configured via `.env` file or environment variables:
 coding-agent/
 ├── src/
 │   ├── agent.py          # Main agent logic with contextual awareness
-│   ├── tools.py           # File/shell operations with workspace support
-│   ├── state.py           # State management & conversation types
-│   ├── memory.py          # Session persistence & management
-│   └── config.py          # Configuration management
+│   ├── tools.py          # File/shell operations with workspace support
+│   ├── git_tools.py      # Git operations (branch, commit, push)
+│   ├── state.py          # State management & conversation types
+│   ├── memory.py         # Session persistence & management
+│   └── config.py         # Configuration management
 ├── interface/
-│   └── cli.py             # Rich CLI interface with multi-line support
-├── agent_runs/            # Default workspace directory
-├── .agent_memory/         # Session storage
-├── main.py                # Entry point
+│   └── cli.py            # Rich CLI interface with multi-line support
+├── agent_runs/           # Default workspace directory
+├── .agent_memory/        # Session storage
+├── main.py               # Entry point
 ├── requirements.txt       
-├── .env                   # Configuration file (optional)
+├── .env                  # Configuration file (optional)
 └── README.md
 ```
 
@@ -240,6 +269,13 @@ coding-agent/
 - Session state preservation on errors
 - Timeout protection for long-running commands
 
+### **Git Integration**
+- Full version control from natural language
+- Automatic branch creation with `agent/` prefix
+- Safe commit workflow with diff preview
+- Push protection - requires user confirmation
+- Works with any Git repository (set via `WORKSPACE_PATH`)
+
 ## Development
 
 This implementation follows the "Build Small, Ship Fast" philosophy with incremental enhancements:
@@ -249,7 +285,8 @@ This implementation follows the "Build Small, Ship Fast" philosophy with increme
 - **Phase 3**: Workspace management ✅
 - **Phase 4**: Enhanced CLI ✅
 - **Phase 5**: Real-time streaming ✅
-- **Phase 6**: Advanced features (in progress)
+- **Phase 6**: Git integration ✅
+- **Phase 7**: Advanced features (in progress)
 
 ### **Technical Stack**
 - **Framework**: LangChain (AgentExecutor with tool calling)
@@ -285,3 +322,10 @@ See `coding-agent-design.md` for the full design document and roadmap.
 - If streaming appears slow or buffered, this is normal token-by-token behavior
 - Use `--no-stream` flag if you prefer traditional batch responses
 - Streaming requires async support (Python 3.7+)
+
+**Git integration:**
+- Agent works with the Git repository containing your workspace
+- Set `WORKSPACE_PATH` to any directory inside your target Git repository
+- Requires Git installed and configured with credentials (SSH keys or tokens)
+- All commits use your local Git identity (from `~/.gitconfig`)
+- To work with different repos, change `WORKSPACE_PATH` and restart the agent
