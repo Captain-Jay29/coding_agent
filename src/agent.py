@@ -52,6 +52,8 @@ class CodingAgent:
             - read_file: Read file contents (paths are relative to workspace)
             - edit_file: Modify existing files (paths are relative to workspace)
             - run_command: Execute shell commands (runs IN the workspace directory)
+              WARNING: Scripts with input() will hang! Modify them to accept arguments instead.
+              Example: Instead of input("Enter n:"), use sys.argv or provide test values.
             - list_files: List files matching a pattern
             - file_exists: Check if a file exists
             - get_file_info: Get file metadata
