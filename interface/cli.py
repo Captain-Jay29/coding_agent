@@ -15,6 +15,8 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.live import Live
 from rich.spinner import Spinner
+from rich.style import Style
+from pyfiglet import Figlet
 
 from src.agent import get_agent
 from src.memory import memory_manager
@@ -24,10 +26,60 @@ from src.config import config
 console = Console()
 
 
+def print_agentcode_ascii(
+    console: Console,
+    text: str = "AgentCode",
+    font: str = "ansi_shadow",
+    gradient: str = "dark_to_light",
+) -> None:
+    """Print AgentCode ASCII art banner with gradient colors."""
+    def _hex_to_rgb(h):
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    def _lerp(a, b, t):
+        return int(a + (b - a) * t)
+
+    def _interpolate_palette(palette, width):
+        if width <= 1:
+            return [palette[0]]
+        out, steps_total = [], width - 1
+        for x in range(width):
+            pos = x / steps_total
+            seg = min(int(pos * (len(palette) - 1)), len(palette) - 2)
+            seg_start, seg_end = seg / (len(palette) - 1), (seg + 1) / (len(palette) - 1)
+            local_t = (pos - seg_start) / (seg_end - seg_start + 1e-9)
+            c1, c2 = _hex_to_rgb(palette[seg]), _hex_to_rgb(palette[seg + 1])
+            rgb = tuple(_lerp(a, b, local_t) for a, b in zip(c1, c2))
+            out.append("#{:02x}{:02x}{:02x}".format(*rgb))
+        return out
+
+    def _print_block_with_horizontal_gradient(lines, palette):
+        width = max(len(line) for line in lines) if lines else 0
+        ramp = _interpolate_palette(palette, width)
+        for line in lines:
+            t = Text()
+            padded = line.ljust(width)
+            for j, ch in enumerate(padded):
+                t.append(ch if ch == " " else ch, Style(color=ramp[j], bold=True))
+            console.print(t)
+
+    fig = Figlet(font=font)
+    lines = fig.renderText(text).rstrip("\n").splitlines()
+    # AgentCode color palette - blue to cyan gradient
+    palette = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe"]
+    if gradient == "light_to_dark":
+        palette = list(reversed(palette))
+    _print_block_with_horizontal_gradient(lines, palette)
+
+
 def print_welcome():
-    """Print welcome message."""
-    welcome_text = Text("🤖 Coding Agent", style="bold blue")
-    welcome_text.append("\nA simple agent for CRUD operations on codebases")
+    """Print welcome message with AgentCode banner."""
+    # Print the AgentCode ASCII banner
+    print_agentcode_ascii(console)
+    
+    # Print welcome text below the banner
+    welcome_text = Text("🤖 A simple agent for CRUD operations on codebases", style="bold blue")
     welcome_text.append("\nType 'help' for commands, 'quit' to exit")
     
     console.print(Panel(welcome_text, title="Welcome", border_style="blue"))

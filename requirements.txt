@@ -7,6 +7,7 @@ langchain-community>=0.3.0
 # CLI interface
 click>=8.0.0
 rich>=13.0.0  # For colored output and better formatting
+pyfiglet>=0.8.0  # For ASCII art banners
 
 # Configuration management
 python-dotenv>=1.0.0
