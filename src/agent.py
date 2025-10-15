@@ -122,11 +122,113 @@ class CodingAgent:
         
         return session_id
     
+    def _add_trace_tags_and_metadata(self, user_input: str, response: str, latency: float, success: bool, error_type: str = None, tool_call_count: int = 0):
+        """Add intelligent tags and metadata to LangSmith trace for filtering and analysis."""
+        try:
+            from langsmith import get_current_run_tree
+            
+            run = get_current_run_tree()
+            if not run:
+                return
+            
+            tags = []
+            user_lower = user_input.lower()
+            response_lower = response.lower()
+            
+            # Task type tags
+            if any(word in user_lower for word in ["git", "commit", "push", "branch", "pull"]):
+                tags.append("git-operation")
+            
+            if any(word in user_lower for word in ["create", "write", "make", "generate"]):
+                tags.append("file-creation")
+            
+            if any(word in user_lower for word in ["read", "show", "display", "view", "check"]):
+                tags.append("file-reading")
+            
+            if any(word in user_lower for word in ["edit", "modify", "update", "change", "fix"]):
+                tags.append("file-editing")
+            
+            if any(word in user_lower for word in ["run", "execute", "test", "pytest"]):
+                tags.append("command-execution")
+            
+            if any(word in user_lower for word in ["install", "pip", "package", "dependency"]):
+                tags.append("package-management")
+            
+            # Complexity tags
+            if len(user_input.split()) > 30 or "multi" in user_lower:
+                tags.append("complex-query")
+            else:
+                tags.append("simple-query")
+            
+            # Success/Error tags
+            if success:
+                tags.append("success")
+            else:
+                tags.append("error")
+                if error_type:
+                    tags.append(f"error-{error_type}")
+            
+            # Performance tags
+            if latency > 10:
+                tags.append("slow")
+            elif latency < 3:
+                tags.append("fast")
+            
+            # Multi-turn conversation tag
+            if self.current_state and len(self.current_state["messages"]) > 2:
+                tags.append("multi-turn")
+            else:
+                tags.append("single-turn")
+            
+            # Tool usage tags
+            if tool_call_count == 0:
+                tags.append("no-tools")
+            elif tool_call_count == 1:
+                tags.append("single-tool")
+            else:
+                tags.append("multi-tool")
+            
+            # Add all tags
+            for tag in tags:
+                run.add_tags([tag])
+            
+            # Add custom metadata
+            message_count = len(self.current_state["messages"]) if self.current_state else 0
+            files_in_context = len(self.current_state.get("current_files", {})) if self.current_state else 0
+            
+            metadata = {
+                "session_id": self.current_session_id,
+                "turn_number": message_count // 2,
+                "message_count": message_count,
+                "has_conversation_history": message_count > 2,  # More than just current exchange
+                "files_in_context": files_in_context,
+                "has_file_context": files_in_context > 0,
+                "tool_call_count": tool_call_count,
+                "latency_seconds": latency,
+                "success": success,
+                "model": self.model.model_name,
+                "temperature": self.model.temperature,
+                "input_length": len(user_input),
+                "response_length": len(response)
+            }
+            
+            if error_type:
+                metadata["error_type"] = error_type
+            
+            run.add_metadata(metadata)
+            
+        except Exception as e:
+            # Silently fail if tagging doesn't work - don't break the main flow
+            pass
+    
     @traceable(run_type="chain", name="process_message")
     def process_message(self, user_input: str) -> Dict[str, Any]:
         """Process a user message and return agent response."""
         if not self.current_session_id:
             self.start_session()
+        
+        # Track start time for latency metrics
+        start_time = datetime.now()
         
         try:
             # Add user message to state
@@ -152,6 +254,18 @@ class CodingAgent:
             # Extract the response
             response_text = response.get("output", "No response generated")
             
+            # Count tool calls from intermediate steps
+            tool_call_count = 0
+            if "intermediate_steps" in response:
+                tool_call_count = len(response["intermediate_steps"])
+            
+            # Calculate latency
+            end_time = datetime.now()
+            latency_seconds = (end_time - start_time).total_seconds()
+            
+            # Add tags and metadata for LangSmith filtering
+            self._add_trace_tags_and_metadata(user_input, response_text, latency_seconds, success=True, tool_call_count=tool_call_count)
+            
             # Add AI message to state
             self.current_state["messages"].append(AIMessage(content=response_text))
             
@@ -167,17 +281,33 @@ class CodingAgent:
                 "session_id": self.current_session_id,
                 "metadata": {
                     "model": self.model.model_name,
+                    "temperature": self.model.temperature,
+                    "latency_seconds": latency_seconds,
+                    "tool_call_count": tool_call_count,
+                    "turn_number": len(self.current_state["messages"]) // 2,
+                    "session_message_count": len(self.current_state["messages"]),
                     "timestamp": self.current_state["last_updated"].isoformat() if hasattr(self.current_state["last_updated"], 'isoformat') else str(self.current_state["last_updated"])
                 }
             }
             
         except Exception as e:
+            # Calculate latency even for errors
+            end_time = datetime.now()
+            latency_seconds = (end_time - start_time).total_seconds()
+            
+            # Add tags for error tracking (no tool count available on error)
+            self._add_trace_tags_and_metadata(user_input, str(e), latency_seconds, success=False, error_type=type(e).__name__, tool_call_count=0)
+            
             # Handle errors gracefully
             error_response = {
                 "success": False,
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "session_id": self.current_session_id
+                "session_id": self.current_session_id,
+                "metadata": {
+                    "latency_seconds": latency_seconds,
+                    "tool_call_count": 0
+                }
             }
             
             # Update state with error
@@ -190,7 +320,6 @@ class CodingAgent:
             
             return error_response
     
-    @traceable(run_type="chain", name="astream_response")
     async def astream_response(self, user_input: str) -> AsyncIterator[Dict[str, Any]]:
         """Stream agent response with events for real-time feedback.
         
@@ -199,9 +328,15 @@ class CodingAgent:
         - on_tool_start: Tool invocation begins
         - on_tool_end: Tool execution completes
         - on_chain_start/end: Agent reasoning steps
+        
+        Note: LangSmith tracing happens automatically via astream_events.
+        The @traceable decorator doesn't work with async generators.
         """
         if not self.current_session_id:
             self.start_session()
+        
+        # Track start time for latency metrics
+        start_time = datetime.now()
         
         try:
             # Add user message to state
@@ -216,8 +351,9 @@ class CodingAgent:
             else:
                 chat_history = all_messages
             
-            # Track response content for saving
+            # Track response content and tool calls
             response_content = ""
+            tool_call_count = 0
             
             # Stream events from agent executor
             async for event in self.agent_executor.astream_events(
@@ -235,10 +371,21 @@ class CodingAgent:
                     content = event["data"]["chunk"].content
                     if content:
                         response_content += content
+                
+                # Count tool calls
+                elif event["event"] == "on_tool_start":
+                    tool_call_count += 1
             
             # After streaming completes, update state
             if response_content:
                 self.current_state["messages"].append(AIMessage(content=response_content))
+            
+            # Calculate latency
+            end_time = datetime.now()
+            latency_seconds = (end_time - start_time).total_seconds()
+            
+            # Add tags and metadata for LangSmith filtering
+            self._add_trace_tags_and_metadata(user_input, response_content, latency_seconds, success=True, tool_call_count=tool_call_count)
             
             # Update state timestamp
             self.current_state = update_state_timestamp(self.current_state)
@@ -246,24 +393,41 @@ class CodingAgent:
             # Save state
             memory_manager.save_state(self.current_session_id, self.current_state)
             
-            # Yield completion event
+            # Yield completion event with metadata
             yield {
                 "event": "on_complete",
                 "data": {
                     "success": True,
                     "session_id": self.current_session_id,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "metadata": {
+                        "latency_seconds": latency_seconds,
+                        "turn_number": len(self.current_state["messages"]) // 2,
+                        "session_message_count": len(self.current_state["messages"]),
+                        "tool_call_count": tool_call_count
+                    }
                 }
             }
             
         except Exception as e:
+            # Calculate latency even for errors
+            end_time = datetime.now()
+            latency_seconds = (end_time - start_time).total_seconds()
+            
+            # Add tags for error tracking (tool_call_count not available on error)
+            self._add_trace_tags_and_metadata(user_input, str(e), latency_seconds, success=False, error_type=type(e).__name__, tool_call_count=0)
+            
             # Yield error event
             yield {
                 "event": "on_error",
                 "data": {
                     "error": str(e),
                     "error_type": type(e).__name__,
-                    "session_id": self.current_session_id
+                    "session_id": self.current_session_id,
+                    "metadata": {
+                        "latency_seconds": latency_seconds,
+                        "tool_call_count": 0
+                    }
                 }
             }
             
