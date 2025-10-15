@@ -36,6 +36,21 @@ class Config:
         self.git_auto_push = os.getenv("GIT_AUTO_PUSH", "false").lower() == "true"
         self.git_main_branch = os.getenv("GIT_MAIN_BRANCH", "main")
         
+        # LangSmith settings for tracing and evaluation
+        # Note: Use LANGCHAIN_* prefix (official LangSmith env vars)
+        self.langsmith_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+        self.langsmith_api_key = os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY")
+        self.langsmith_project = os.getenv("LANGCHAIN_PROJECT", "coding-agent")
+        self.langsmith_endpoint = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+        
+        # Set LangSmith environment variables if not already set
+        # This ensures LangChain automatically traces all operations
+        if self.langsmith_tracing and self.langsmith_api_key:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = self.langsmith_api_key
+            os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
+            os.environ["LANGCHAIN_ENDPOINT"] = self.langsmith_endpoint
+        
         # Ensure workspace directory exists
         self._ensure_workspace_exists()
     
@@ -89,6 +104,18 @@ class Config:
         """Get the main branch name (protected from direct pushes)."""
         return self.git_main_branch
     
+    def get_langsmith_enabled(self) -> bool:
+        """Check if LangSmith tracing is enabled."""
+        return self.langsmith_tracing
+    
+    def get_langsmith_api_key(self) -> Optional[str]:
+        """Get LangSmith API key."""
+        return self.langsmith_api_key
+    
+    def get_langsmith_project(self) -> str:
+        """Get LangSmith project name."""
+        return self.langsmith_project
+    
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from environment."""
         return os.getenv("OPENAI_API_KEY")
@@ -125,6 +152,9 @@ class Config:
         print(f"  Git Enabled: {self.git_enabled}")
         print(f"  Git Auto-Push: {self.git_auto_push}")
         print(f"  Git Main Branch: {self.git_main_branch}")
+        print(f"  LangSmith Tracing: {self.langsmith_tracing}")
+        print(f"  LangSmith Project: {self.langsmith_project}")
+        print(f"  LangSmith API Key: {'Set' if self.langsmith_api_key else 'Not set'}")
         print(f"  OpenAI API Key: {'Set' if self.get_openai_api_key() else 'Not set'}")
 
 
