@@ -113,7 +113,7 @@ def edit_file(file_path: str, old_content: str, new_content: str) -> bool:
 
 
 @tool
-def run_command(command: str, timeout: int = None, working_dir: str = None) -> str:
+def run_command(command: str, timeout: int = None, working_dir: str = None, show_output: bool = False) -> str:
     """Run a shell command and return the output.
     
     Commands execute in the workspace directory by default, making it easy to work with
@@ -123,6 +123,8 @@ def run_command(command: str, timeout: int = None, working_dir: str = None) -> s
         command: The shell command to execute
         timeout: Timeout in seconds (uses config default if not provided)
         working_dir: Working directory for command execution (defaults to workspace path)
+        show_output: If True, display output in real-time to terminal (for dashboards/monitors).
+                     If False (default), capture output for return value and error handling.
     """
     if timeout is None:
         timeout = config.get_command_timeout()
@@ -131,30 +133,45 @@ def run_command(command: str, timeout: int = None, working_dir: str = None) -> s
     if working_dir is None:
         working_dir = str(config.get_workspace_path())
     
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=working_dir
-    )
-    
-    if result.returncode != 0:
-        # Include both stdout and stderr for context, truncate to last 500 chars to avoid token bloat
-        error_msg = f"Command failed with exit code {result.returncode}"
+    if show_output:
+        # Don't capture output - let it stream directly to terminal for real-time display
+        result = subprocess.run(
+            command,
+            shell=True,
+            timeout=timeout,
+            cwd=working_dir
+        )
         
-        if result.stdout:
-            stdout_truncated = result.stdout[-500:] if len(result.stdout) > 500 else result.stdout
-            error_msg += f"\nOutput: {stdout_truncated}"
+        if result.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {result.returncode}")
         
-        if result.stderr:
-            stderr_truncated = result.stderr[-500:] if len(result.stderr) > 500 else result.stderr
-            error_msg += f"\nError: {stderr_truncated}"
+        return "Command executed successfully (output displayed in terminal)"
+    else:
+        # Capture output for return value and error context
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=working_dir
+        )
         
-        raise RuntimeError(error_msg)
-    
-    return result.stdout
+        if result.returncode != 0:
+            # Include both stdout and stderr for context, truncate to last 500 chars to avoid token bloat
+            error_msg = f"Command failed with exit code {result.returncode}"
+            
+            if result.stdout:
+                stdout_truncated = result.stdout[-500:] if len(result.stdout) > 500 else result.stdout
+                error_msg += f"\nOutput: {stdout_truncated}"
+            
+            if result.stderr:
+                stderr_truncated = result.stderr[-500:] if len(result.stderr) > 500 else result.stderr
+                error_msg += f"\nError: {stderr_truncated}"
+            
+            raise RuntimeError(error_msg)
+        
+        return result.stdout
 
 
 @tool

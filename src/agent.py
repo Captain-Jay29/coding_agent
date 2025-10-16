@@ -52,6 +52,11 @@ class CodingAgent:
             - read_file: Read file contents (paths are relative to workspace)
             - edit_file: Modify existing files (paths are relative to workspace)
             - run_command: Execute shell commands (runs IN the workspace directory)
+              * By default, captures output for return value and error handling
+              * Use show_output=True for interactive/monitoring tools (dashboards, monitors, live displays)
+                to stream output directly to terminal in real-time
+              * Examples: run_command("python monitor.py", show_output=True) for dashboards
+                         run_command("pytest tests.py") for normal commands (captures output)
               WARNING: Scripts with input() will hang! Modify them to accept arguments instead.
               Example: Instead of input("Enter n:"), use sys.argv or provide test values.
             - list_files: List files matching a pattern
