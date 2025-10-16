@@ -1,6 +1,31 @@
-# Coding Agent
+<p align="center">
+  <img src="media/agentCode_testRun.mp4" alt="AgentCode Demo" width="800" />
+</p>
 
-A powerful coding agent built with LangChain that can perform CRUD operations on codebases through natural conversation with real-time streaming, contextual awareness, and workspace management.
+<pre align="center" style="font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; color: #1e3a8a; background: transparent;">
+ █████╗  ██████╗ ███████╗███╗   ██╗████████╗ ██████╗ ██████╗ ██████╗ ███████╗
+██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
+███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ██║     ██║   ██║██║  ██║█████╗  
+██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝  
+██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ╚██████╗╚██████╔╝██████╔╝███████╗
+╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+</pre>
+
+<p align="center" style="color: #2563eb; font-size: 1.2em; font-weight: 600; margin-top: 10px;">
+  The AI coding agent that understands your workspace!
+</p>
+
+<p align="center" style="color: #1e40af; font-size: 1.0em; font-weight: 500;">
+  Real-time streaming, contextual awareness, and intelligent workspace management.
+</p>
+
+<p align="center" style="color: #374151; font-size: 0.95em;">
+  <strong>AgentCode brings powerful AI coding assistance with LangChain, featuring real-time streaming, multi-file project support, and seamless Git integration.</strong>
+</p>
+<br>
+<br>
+
+[![Python Versions](https://img.shields.io/pypi/pyversions/langchain.svg)](https://pypi.org/project/langchain/) [![License](https://img.shields.io/github/license/openai/openai-python.svg)](https://github.com/openai/openai-python/blob/main/LICENSE) [![LangChain](https://img.shields.io/badge/LangChain-0.1.0-blue.svg)](https://github.com/langchain-ai/langchain) [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-green.svg)](https://openai.com/) [![Streaming](https://img.shields.io/badge/Streaming-Real--time-orange.svg)](https://github.com/langchain-ai/langchain) [![Git Integration](https://img.shields.io/badge/Git-Integration-purple.svg)](https://git-scm.com/) [![Web UI](https://img.shields.io/badge/Web%20UI-Next.js%20%2B%20FastAPI-red.svg)](https://nextjs.org/) [![Evaluation](https://img.shields.io/badge/Evaluation-LangSmith-yellow.svg)](https://smith.langchain.com/)
 
 ## Quick Start
 
@@ -23,6 +48,8 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
    MAX_HISTORY_MESSAGES=20
    COMMAND_TIMEOUT=30
    MEMORY_STORAGE_DIR=.agent_memory
+   MAX_RETRY=3           # Maximum retry attempts (default: 3)
+   AUTO_RETRY=true       # Enable auto-retry on errors (default: true)
    ```
 
 4. **Run the agent:**
@@ -48,6 +75,7 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 - **Smart Path Resolution**: Automatically handles file paths and workspace navigation
 - **Multi-line Input**: Support for complex, multi-line requests
 - **Session Management**: Persistent conversation history across sessions
+- **Auto-Retry Logic**: Automatically recovers from errors by analyzing failures and trying different approaches (configurable up to 3 retries)
 
 ### 🛠 **Developer Experience**
 - **Workspace Isolation**: All work happens in a dedicated workspace directory

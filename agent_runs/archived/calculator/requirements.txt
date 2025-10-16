@@ -1,0 +1,2 @@
+# Requirements for calculator package
+pytest>=7.0.0

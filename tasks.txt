@@ -37,3 +37,15 @@ Create a Python library that:
 - Parses responses
 - Includes retry logic
 - Has proper error handling
+
+6. System Monitor Dashboard
+Create a Python CLI tool that:
+- Monitors system resources (CPU, memory, disk)
+- Displays real-time metrics in terminal
+- Uses rich colors and progress bars
+- Shows network statistics
+- Creates colorful charts and graphs in CLI
+- Includes test script that runs monitoring for 30 seconds then exits
+- No user input required - just run and watch colorful output
+- Uses Rich library for beautiful terminal display
+- use the same branch, do not create a new branch
