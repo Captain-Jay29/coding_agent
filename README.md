@@ -23,6 +23,8 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
    MAX_HISTORY_MESSAGES=20
    COMMAND_TIMEOUT=30
    MEMORY_STORAGE_DIR=.agent_memory
+   MAX_RETRY=3           # Maximum retry attempts (default: 3)
+   AUTO_RETRY=true       # Enable auto-retry on errors (default: true)
    ```
 
 4. **Run the agent:**
@@ -48,6 +50,7 @@ A powerful coding agent built with LangChain that can perform CRUD operations on
 - **Smart Path Resolution**: Automatically handles file paths and workspace navigation
 - **Multi-line Input**: Support for complex, multi-line requests
 - **Session Management**: Persistent conversation history across sessions
+- **Auto-Retry Logic**: Automatically recovers from errors by analyzing failures and trying different approaches (configurable up to 3 retries)
 
 ### 🛠 **Developer Experience**
 - **Workspace Isolation**: All work happens in a dedicated workspace directory

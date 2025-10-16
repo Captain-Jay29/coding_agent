@@ -31,6 +31,10 @@ class Config:
         # Agent settings
         self.max_history_messages = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
         
+        # Retry settings
+        self.max_retry = int(os.getenv("MAX_RETRY", "3"))
+        self.auto_retry = os.getenv("AUTO_RETRY", "true").lower() == "true"
+        
         # Git settings
         self.git_enabled = os.getenv("GIT_ENABLED", "true").lower() == "true"
         self.git_auto_push = os.getenv("GIT_AUTO_PUSH", "false").lower() == "true"
@@ -92,6 +96,14 @@ class Config:
         """Get maximum number of history messages to pass to agent."""
         return self.max_history_messages
     
+    def get_max_retry(self) -> int:
+        """Get maximum number of retry attempts for failed operations."""
+        return self.max_retry
+    
+    def get_auto_retry_enabled(self) -> bool:
+        """Check if automatic retry is enabled."""
+        return self.auto_retry
+    
     def get_git_enabled(self) -> bool:
         """Check if Git operations are enabled."""
         return self.git_enabled
@@ -149,6 +161,8 @@ class Config:
         print(f"  Command Timeout: {self.command_timeout}s")
         print(f"  Memory Storage: {self.memory_storage_dir}")
         print(f"  Max History Messages: {self.max_history_messages}")
+        print(f"  Max Retry Attempts: {self.max_retry}")
+        print(f"  Auto Retry Enabled: {self.auto_retry}")
         print(f"  Git Enabled: {self.git_enabled}")
         print(f"  Git Auto-Push: {self.git_auto_push}")
         print(f"  Git Main Branch: {self.git_main_branch}")

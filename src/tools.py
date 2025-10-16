@@ -141,7 +141,18 @@ def run_command(command: str, timeout: int = None, working_dir: str = None) -> s
     )
     
     if result.returncode != 0:
-        raise RuntimeError(f"Command failed with exit code {result.returncode}: {result.stderr}")
+        # Include both stdout and stderr for context, truncate to last 500 chars to avoid token bloat
+        error_msg = f"Command failed with exit code {result.returncode}"
+        
+        if result.stdout:
+            stdout_truncated = result.stdout[-500:] if len(result.stdout) > 500 else result.stdout
+            error_msg += f"\nOutput: {stdout_truncated}"
+        
+        if result.stderr:
+            stderr_truncated = result.stderr[-500:] if len(result.stderr) > 500 else result.stderr
+            error_msg += f"\nError: {stderr_truncated}"
+        
+        raise RuntimeError(error_msg)
     
     return result.stdout
 
@@ -190,6 +201,94 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
     }
 
 
+@tool
+def get_current_directory() -> str:
+    """Get the current working directory (workspace path).
+    
+    Returns the absolute path of the workspace directory where all operations are performed.
+    This is useful to understand your current location in the filesystem.
+    """
+    workspace_path = config.get_workspace_path()
+    return str(workspace_path)
+
+
+@tool
+def list_directory(directory_path: str = ".") -> Dict[str, Any]:
+    """List contents of a directory with details.
+    
+    Args:
+        directory_path: Path to directory to list (default: current workspace)
+        
+    Returns:
+        Dictionary with files and directories lists plus the absolute path
+    """
+    resolved_path = _resolve_path(directory_path)
+    
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"Directory not found: {resolved_path}")
+    
+    if not os.path.isdir(resolved_path):
+        raise ValueError(f"Not a directory: {resolved_path}")
+    
+    entries = os.listdir(resolved_path)
+    
+    files = []
+    directories = []
+    
+    for entry in sorted(entries):
+        full_path = os.path.join(resolved_path, entry)
+        if os.path.isdir(full_path):
+            directories.append(entry)
+        else:
+            # Include file size for files
+            size = os.path.getsize(full_path)
+            files.append(f"{entry} ({size} bytes)")
+    
+    return {
+        "path": resolved_path,
+        "directories": directories,
+        "files": files,
+        "total_items": len(entries)
+    }
+
+
+@tool
+def change_workspace_context(new_path: str) -> str:
+    """Change the workspace context to a different directory.
+    
+    NOTE: This doesn't actually change the workspace path in config, but returns
+    information about a different directory you want to work in. Use this to explore
+    different directories, then use relative paths in other tools.
+    
+    Args:
+        new_path: Path to the directory to explore (can be relative or absolute)
+        
+    Returns:
+        Information about the directory and its contents
+    """
+    resolved_path = _resolve_path(new_path)
+    
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"Directory not found: {resolved_path}")
+    
+    if not os.path.isdir(resolved_path):
+        raise ValueError(f"Not a directory: {resolved_path}")
+    
+    # Get directory contents
+    entries = os.listdir(resolved_path)
+    files = [e for e in entries if os.path.isfile(os.path.join(resolved_path, e))]
+    dirs = [e for e in entries if os.path.isdir(os.path.join(resolved_path, e))]
+    
+    return f"""Directory: {resolved_path}
+Subdirectories ({len(dirs)}): {', '.join(sorted(dirs)) if dirs else 'none'}
+Files ({len(files)}): {', '.join(sorted(files)) if files else 'none'}
+
+You can now work with files in this directory using relative paths like:
+- read_file("{new_path}/filename.txt")
+- write_file("{new_path}/newfile.py", content)
+"""
+
+
 # Tool registry for the agent
 TOOLS = [
     # File operations
@@ -200,6 +299,10 @@ TOOLS = [
     list_files,
     file_exists,
     get_file_info,
+    # Directory navigation
+    get_current_directory,
+    list_directory,
+    change_workspace_context,
     # Git operations
     *GIT_TOOLS,
 ]
