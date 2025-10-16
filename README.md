@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="media/agentCode_testRun.mp4" alt="AgentCode Demo" width="800" />
+  <img src="media/agentCode_testRun.gif" alt="AgentCode Demo" width="800" />
 </p>
 
 <pre align="center" style="font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; color: #1e3a8a; background: transparent;">
@@ -323,6 +323,10 @@ See `web_ui/README.md` for detailed documentation.
 ## Evaluation & LangSmith
 
 Comprehensive evaluation framework with LangSmith integration for tracing, metrics, and performance analysis.
+
+<p align="center">
+  <img src="media/evals.png" alt="LangSmith Evaluation Dashboard" width="800" />
+</p>
 
 ### Setup LangSmith
 
