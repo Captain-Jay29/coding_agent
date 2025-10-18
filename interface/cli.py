@@ -17,10 +17,15 @@ from rich.live import Live
 from rich.spinner import Spinner
 from rich.style import Style
 from pyfiglet import Figlet
-
-from src.agent import get_agent
-from src.memory import memory_manager
 from src.config import config
+
+# Import LangGraph agent
+from src.langgraph_agent import (
+    create_langgraph_agent,
+    get_memory,
+    stream_simple,
+    AgentState
+)
 
 
 console = Console()
@@ -105,47 +110,30 @@ def print_help():
     console.print(help_table)
 
 
-def print_session_info():
+def print_session_info(session_id: str):
     """Print current session information."""
-    agent = get_agent()
-    info = agent.get_session_info()
-    
-    if "error" in info:
-        console.print(f"[red]Error: {info['error']}[/red]")
-        return
-    
     info_text = f"""
-Session ID: {info['session_id']}
-Messages: {info['message_count']}
-Files in context: {info['files_in_context']}
-Created: {info['created_at']}
-Last updated: {info['last_updated']}
+Session ID: {session_id}
+Agent: LangGraph 2-Agent System
+Memory: Automatic checkpointing enabled
 """
-    
-    if info['last_error']:
-        info_text += f"Last error: {info['last_error']['error']}"
-    
     console.print(Panel(info_text, title="Session Info", border_style="green"))
 
 
 def list_sessions():
     """List available sessions."""
-    sessions = memory_manager.list_sessions()
+    memory = get_memory()
+    sessions = memory.list_sessions()
     
     if not sessions:
-        console.print("[yellow]No sessions found.[/yellow]")
+        console.print("[yellow]No sessions found (sessions are in-memory for current run).[/yellow]")
         return
     
     session_table = Table(title="Available Sessions")
     session_table.add_column("Session ID", style="cyan")
-    session_table.add_column("Status", style="white")
-    
-    agent = get_agent()
-    current_session = agent.current_session_id
     
     for session_id in sessions:
-        status = "Current" if session_id == current_session else "Available"
-        session_table.add_row(session_id[:8] + "...", status)
+        session_table.add_row(session_id[:8] + "...")
     
     console.print(session_table)
 
@@ -168,141 +156,138 @@ def get_multiline_input() -> str:
     return "\n".join(lines).strip()
 
 
-def handle_command(command: str) -> str:
-    """Handle special commands. Returns 'quit', 'handled', or 'continue'."""
+def handle_command(command: str, current_session_id: str, agent, stream: bool) -> tuple:
+    """Handle special commands. Returns (action, new_session_id) where action is 'quit', 'handled', or 'continue'."""
     cmd = command.strip().lower()
     
     if cmd == "help":
         print_help()
-        return "handled"
+        return ("handled", current_session_id)
     
     elif cmd == "sessions":
         list_sessions()
-        return "handled"
+        return ("handled", current_session_id)
     
     elif cmd.startswith("session "):
-        session_id = command[8:].strip()
-        if session_id:
-            agent = get_agent()
-            agent.start_session(session_id)
-            console.print(f"[green]Switched to session: {session_id}[/green]")
+        new_session_id = command[8:].strip()
+        if new_session_id:
+            console.print(f"[green]Switched to session: {new_session_id}[/green]")
+            return ("handled", new_session_id)
         else:
             console.print("[red]Please provide a session ID[/red]")
-        return "handled"
+        return ("handled", current_session_id)
     
     elif cmd == "info":
-        print_session_info()
-        return "handled"
+        print_session_info(current_session_id)
+        return ("handled", current_session_id)
     
     elif cmd == "clear":
         if Confirm.ask("Are you sure you want to clear the current session?"):
-            agent = get_agent()
-            # Delete current session from memory
-            if agent.current_session_id:
-                memory_manager.delete_session(agent.current_session_id)
-            # Start completely new session
-            agent.start_session()
-            console.print("[green]Session cleared. Started new session.[/green]")
-        return "handled"
+            # Generate new session ID
+            import uuid
+            new_session_id = str(uuid.uuid4())
+            console.print(f"[green]Session cleared. Started new session: {new_session_id}[/green]")
+            return ("handled", new_session_id)
+        return ("handled", current_session_id)
     
     elif cmd == "config":
         config.print_config()
-        return "handled"
+        return ("handled", current_session_id)
     
     elif cmd == "multiline":
         console.print("[green]Multi-line input mode activated![/green]")
         user_input = get_multiline_input()
         if user_input:
             # Process the multi-line input
-            agent = get_agent()
             console.print("[dim]Processing...[/dim]")
             try:
-                response = agent.process_message(user_input)
-                formatted_response = format_agent_response(response)
-                console.print(Panel(formatted_response, title="Agent", border_style="green"))
+                if stream:
+                    asyncio.run(process_streaming_response(agent, user_input, current_session_id))
+                else:
+                    result = process_non_streaming(agent, user_input, current_session_id)
+                    console.print(Panel(result, title="Agent", border_style="green"))
             except Exception as e:
                 console.print(f"[red]Agent error: {e}[/red]")
-                console.print(f"[red]Error type: {type(e).__name__}[/red]")
                 import traceback
-                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
-        return "handled"
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        return ("handled", current_session_id)
     
     elif cmd in ["quit", "exit"]:
-        return "quit"
+        return ("quit", current_session_id)
     
-    return "continue"
+    return ("continue", current_session_id)
 
 
-async def process_streaming_response(agent, user_input: str):
+def create_initial_state(user_input: str, session_id: str) -> AgentState:
+    """
+    Create initial state for LangGraph agent.
+    
+    Note: Only sets NEW values. LangGraph checkpointer will restore 
+    previous state (like messages) automatically when using the same session_id.
+    """
+    return {
+        "user_input": user_input,
+        "session_id": session_id,
+        "response": "",
+        "plan": [],
+        "execution_results": [],
+        "files_modified": [],
+        "next_action": "",
+        "tool_call_count": 0,
+        "retry_count": 0,
+        "reflection_notes": []
+        # Note: "messages" is NOT reset here - checkpointer restores it
+    }
+
+
+async def process_streaming_response(agent, user_input: str, session_id: str):
     """Process agent response with streaming for real-time feedback."""
-    console.print("[dim]Processing...[/dim]\n")
-    
-    response_text = ""
-    current_tool = None
-    
     try:
-        async for event in agent.astream_response(user_input):
-            event_type = event.get("event")
-            
-            # Handle different event types
-            if event_type == "on_chat_model_stream":
-                # Stream tokens as they arrive
-                content = event["data"]["chunk"].content
-                if content:
-                    console.print(content, end="", style="green")
-                    response_text += content
-            
-            elif event_type == "on_tool_start":
-                # Show tool invocation
-                tool_name = event.get("name", "unknown")
-                current_tool = tool_name
-                console.print(f"\n\n[dim]🛠️  Using tool: {tool_name}[/dim]")
-            
-            elif event_type == "on_tool_end":
-                # Show tool completion
-                if current_tool:
-                    console.print(f"[dim]✅ Tool completed: {current_tool}[/dim]\n")
-                    current_tool = None
-            
-            elif event_type == "on_complete":
-                # Streaming completed successfully
-                console.print("\n")
-                return True
-            
-            elif event_type == "on_error":
-                # Handle errors
-                error_data = event.get("data", {})
-                console.print(f"\n\n[red]❌ Error: {error_data.get('error', 'Unknown error')}[/red]")
-                console.print(f"[dim]Type: {error_data.get('error_type', 'Unknown')}[/dim]")
-                return False
-        
+        async for chunk in stream_simple(agent, user_input, session_id):
+            console.print(chunk, end="")
+        console.print("\n")
         return True
-        
     except Exception as e:
-        console.print(f"\n\n[red]Streaming error: {e}[/red]")
+        console.print(f"\n[red]Streaming error: {e}[/red]")
         import traceback
         console.print(f"[dim]{traceback.format_exc()}[/dim]")
         return False
 
 
-def format_agent_response(response: dict) -> str:
-    """Format agent response for display."""
-    if not response["success"]:
-        error_text = f"[red]Error: {response['error']}[/red]"
-        if response.get("error_type"):
-            error_text += f"\n[dim]Type: {response['error_type']}[/dim]"
-        return error_text
-    
-    # Format successful response
-    response_text = response["response"]
-    
-    # Add metadata if available
-    if response.get("tool_calls"):
-        tool_calls = response["tool_calls"]
-        if tool_calls:
-            response_text += f"\n\n[dim]Tools used: {len(tool_calls)}[/dim]"
-    
-    return response_text
+def process_non_streaming(agent, user_input: str, session_id: str) -> str:
+    """Process agent response without streaming."""
+    try:
+        initial_state = create_initial_state(user_input, session_id)
+        
+        # Get memory config
+        memory = get_memory()
+        config_dict = memory.get_config(session_id)
+        
+        # Invoke agent
+        result = agent.invoke(initial_state, config_dict)
+        
+        # Format response
+        response = result.get("response", "No response generated")
+        
+        # Add execution details
+        execution_results = result.get("execution_results", [])
+        if execution_results:
+            successful = sum(1 for r in execution_results if r.get("success"))
+            response += f"\n\n[dim]Executed {successful}/{len(execution_results)} steps successfully[/dim]"
+        
+        files_modified = result.get("files_modified", [])
+        if files_modified:
+            response += f"\n[dim]Files modified: {', '.join(files_modified)}[/dim]"
+        
+        retry_count = result.get("retry_count", 0)
+        if retry_count > 0:
+            response += f"\n[dim]Retries: {retry_count}[/dim]"
+        
+        return response
+        
+    except Exception as e:
+        import traceback
+        return f"[red]Error: {e}[/red]\n[dim]{traceback.format_exc()}[/dim]"
 
 
 @click.command()
@@ -310,7 +295,7 @@ def format_agent_response(response: dict) -> str:
 @click.option("--model", default=None, help="OpenAI model to use (overrides config)")
 @click.option("--stream/--no-stream", default=True, help="Enable streaming mode (default: enabled)")
 def main(session_id: Optional[str], model: str, stream: bool):
-    """Start the coding agent CLI."""
+    """Start the coding agent CLI with LangGraph."""
     
     # Check for OpenAI API key
     if not config.get_openai_api_key():
@@ -323,26 +308,31 @@ def main(session_id: Optional[str], model: str, stream: bool):
         console.print("[red]Configuration validation failed. Please check the errors above.[/red]")
         sys.exit(1)
     
-    # Initialize agent (use CLI model if provided, otherwise use config)
-    agent = get_agent(model_name=model)
+    # Initialize LangGraph agent with memory
+    console.print("[dim]Initializing LangGraph agent...[/dim]")
+    agent = create_langgraph_agent(with_memory=True)
     
-    # Start session
-    if session_id:
-        agent.start_session(session_id)
-        console.print(f"[green]Resumed session: {session_id}[/green]")
-    else:
-        session_id = agent.start_session()
-        console.print(f"[green]Started new session: {session_id}[/green]")
+    # Generate or use provided session ID
+    import uuid
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
+    console.print(f"[green]Session: {session_id}[/green]")
     
     print_welcome()
     
     # Main interaction loop
+    current_session_id = session_id
     while True:
         try:
             user_input = Prompt.ask("\n[bold blue]You[/bold blue]")
             
             # Handle special commands
-            command_result = handle_command(user_input)
+            command_result, new_session_id = handle_command(user_input, current_session_id, agent, stream)
+            
+            # Update session if changed
+            if new_session_id != current_session_id:
+                current_session_id = new_session_id
             
             if command_result == "quit":  # quit command
                 break
@@ -353,20 +343,16 @@ def main(session_id: Optional[str], model: str, stream: bool):
             try:
                 if stream:
                     # Use streaming mode
-                    asyncio.run(process_streaming_response(agent, user_input))
+                    asyncio.run(process_streaming_response(agent, user_input, current_session_id))
                 else:
                     # Use non-streaming mode
                     console.print("[dim]Processing...[/dim]")
-                    response = agent.process_message(user_input)
-                    
-                    # Display response
-                    formatted_response = format_agent_response(response)
-                    console.print(Panel(formatted_response, title="Agent", border_style="green"))
+                    response = process_non_streaming(agent, user_input, current_session_id)
+                    console.print(Panel(response, title="Agent", border_style="green"))
             except Exception as e:
                 console.print(f"[red]Agent error: {e}[/red]")
-                console.print(f"[red]Error type: {type(e).__name__}[/red]")
                 import traceback
-                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
         
         except KeyboardInterrupt:
             console.print("\n[yellow]Use 'quit' to exit gracefully[/yellow]")
