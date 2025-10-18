@@ -264,6 +264,16 @@ async def process_streaming_response(agent, user_input: str):
                     console.print(f"[dim]✅ Tool completed: {current_tool}[/dim]\n")
                     current_tool = None
             
+            elif event_type == "on_retry":
+                # Show retry notification
+                data = event.get("data", {})
+                retry_count = data.get("retry_count", 0)
+                max_retries = data.get("max_retries", 0)
+                error_type = data.get("error_type", "Unknown")
+                console.print(f"\n[yellow]⚠️  Error encountered on attempt {retry_count}/{max_retries + 1}[/yellow]")
+                console.print(f"[yellow]   Error: {error_type}[/yellow]")
+                console.print(f"[yellow]   🔄 Retrying automatically...[/yellow]\n")
+            
             elif event_type == "on_complete":
                 # Streaming completed successfully
                 console.print("\n")

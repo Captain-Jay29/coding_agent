@@ -5,7 +5,7 @@ Simplified version without LangGraph for MVP testing.
 
 import os
 import uuid
-from typing import Dict, Any, List, AsyncIterator
+from typing import Dict, Any, List, AsyncIterator, Optional
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
@@ -133,6 +133,25 @@ class CodingAgent:
             self.current_state = create_initial_state(session_id)
         
         return session_id
+    
+    def _extract_tool_errors(self, response: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """Extract tool errors from agent response intermediate steps.
+        
+        Returns error info dict if any tool failed, None otherwise.
+        """
+        # Check intermediate steps for tool failures
+        for action, observation in response.get("intermediate_steps", []):
+            # Tool errors come back as string observations containing error markers
+            if isinstance(observation, str):
+                # Check for our error format from run_command and other tools
+                if "Error:" in observation or "failed with exit code" in observation or "Traceback" in observation:
+                    return {
+                        "error": observation,
+                        "error_type": "ToolExecutionError",
+                        "tool": action.tool if hasattr(action, 'tool') else "unknown"
+                    }
+        
+        return None
     
     def _format_retry_feedback(self, error_info: Dict[str, str], user_input: str) -> str:
         """Format error information as feedback for the agent to retry.
@@ -342,6 +361,12 @@ Please proceed with your fix and retry.
                     "chat_history": chat_history
                 })
                 
+                # Check if any tools failed (even though invoke succeeded)
+                tool_error = self._extract_tool_errors(response)
+                if tool_error and auto_retry_enabled:
+                    # Treat tool error as exception to trigger retry
+                    raise RuntimeError(tool_error["error"])
+                
                 # Extract the response
                 response_text = response.get("output", "No response generated")
                 
@@ -358,8 +383,18 @@ Please proceed with your fix and retry.
                 retry_count = self.current_state.get("retry_count", 0)
                 self._add_trace_tags_and_metadata(original_user_input, response_text, latency_seconds, success=True, tool_call_count=tool_call_count)
                 
-                # Add AI message to state
-                self.current_state["messages"].append(AIMessage(content=response_text))
+                # Add AI message to state with rich metadata
+                self.current_state["messages"].append(AIMessage(
+                    content=response_text,
+                    additional_kwargs={
+                        "model": self.model.model_name,
+                        "temperature": self.model.temperature,
+                        "latency_seconds": latency_seconds,
+                        "tool_call_count": tool_call_count,
+                        "retry_count": retry_count,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                ))
                 
                 # Update state timestamp
                 self.current_state = update_state_timestamp(self.current_state)
@@ -459,13 +494,14 @@ Please proceed with your fix and retry.
                     return error_response
     
     async def astream_response(self, user_input: str) -> AsyncIterator[Dict[str, Any]]:
-        """Stream agent response with events for real-time feedback.
+        """Stream agent response with events for real-time feedback with retry support.
         
         Yields events including:
         - on_chat_model_stream: Token-by-token LLM output
         - on_tool_start: Tool invocation begins
         - on_tool_end: Tool execution completes
         - on_chain_start/end: Agent reasoning steps
+        - on_retry: Retry attempt notification
         
         Note: LangSmith tracing happens automatically via astream_events.
         The @traceable decorator doesn't work with async generators.
@@ -476,106 +512,214 @@ Please proceed with your fix and retry.
         # Track start time for latency metrics
         start_time = datetime.now()
         
-        try:
-            # Add user message to state
-            self.current_state["messages"].append(HumanMessage(content=user_input))
-            
-            # Get chat history with sliding window
-            max_history = config.get_max_history_messages()
-            all_messages = self.current_state["messages"][:-1]
-            
-            if len(all_messages) > max_history:
-                chat_history = all_messages[-max_history:]
-            else:
-                chat_history = all_messages
-            
-            # Track response content and tool calls
-            response_content = ""
-            tool_call_count = 0
-            
-            # Stream events from agent executor
-            async for event in self.agent_executor.astream_events(
-                {
-                    "input": user_input,
-                    "chat_history": chat_history
-                },
-                version="v1"
-            ):
-                # Yield the event to the caller
-                yield event
+        # Reset retry state for new user message
+        self.current_state = reset_retry_state(self.current_state)
+        
+        # Store original user input for retry context
+        original_user_input = user_input
+        
+        # Add user message to state (only once, before any retries)
+        self.current_state["messages"].append(HumanMessage(content=user_input))
+        
+        # Get max retry settings
+        max_retries = config.get_max_retry()
+        auto_retry_enabled = config.get_auto_retry_enabled()
+        
+        # Retry loop
+        while True:
+            try:
+                # Get chat history with sliding window
+                max_history = config.get_max_history_messages()
+                all_messages = self.current_state["messages"][:-1]
                 
-                # Collect response content from chat model streams
-                if event["event"] == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        response_content += content
+                if len(all_messages) > max_history:
+                    chat_history = all_messages[-max_history:]
+                else:
+                    chat_history = all_messages
                 
-                # Count tool calls
-                elif event["event"] == "on_tool_start":
-                    tool_call_count += 1
+                # Track response content, tool calls, and errors
+                response_content = ""
+                tool_call_count = 0
+                tool_error = None
+                
+                # Stream events from agent executor
+                async for event in self.agent_executor.astream_events(
+                    {
+                        "input": user_input,
+                        "chat_history": chat_history
+                    },
+                    version="v1"
+                ):
+                    # Yield the event to the caller
+                    yield event
+                    
+                    # Collect response content from chat model streams
+                    if event["event"] == "on_chat_model_stream":
+                        content = event["data"]["chunk"].content
+                        if content:
+                            response_content += content
+                    
+                    # Count tool calls and detect errors
+                    elif event["event"] == "on_tool_start":
+                        tool_call_count += 1
+                    
+                    # Check tool outputs for errors
+                    elif event["event"] == "on_tool_end":
+                        output = event["data"].get("output", "")
+                        if isinstance(output, str):
+                            if "Error:" in output or "failed with exit code" in output or "Traceback" in output:
+                                tool_error = {
+                                    "error": output,
+                                    "error_type": "ToolExecutionError"
+                                }
             
-            # After streaming completes, update state
-            if response_content:
-                self.current_state["messages"].append(AIMessage(content=response_content))
-            
-            # Calculate latency
-            end_time = datetime.now()
-            latency_seconds = (end_time - start_time).total_seconds()
-            
-            # Add tags and metadata for LangSmith filtering
-            self._add_trace_tags_and_metadata(user_input, response_content, latency_seconds, success=True, tool_call_count=tool_call_count)
-            
-            # Update state timestamp
-            self.current_state = update_state_timestamp(self.current_state)
-            
-            # Save state
-            memory_manager.save_state(self.current_session_id, self.current_state)
-            
-            # Yield completion event with metadata
-            yield {
-                "event": "on_complete",
-                "data": {
-                    "success": True,
-                    "session_id": self.current_session_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "metadata": {
+                # After streaming completes, check if we should retry
+                if tool_error and auto_retry_enabled:
+                    current_retry = self.current_state.get("retry_count", 0)
+                    if current_retry < max_retries:
+                        # Increment retry count
+                        self.current_state = increment_retry_count(self.current_state, tool_error)
+                        
+                        # Yield retry notification event
+                        yield {
+                            "event": "on_retry",
+                            "data": {
+                                "retry_count": self.current_state["retry_count"],
+                                "max_retries": max_retries,
+                                "error_type": tool_error["error_type"],
+                                "error_preview": tool_error["error"][:200]
+                            }
+                        }
+                        
+                        # Format retry feedback
+                        retry_feedback = self._format_retry_feedback(tool_error, original_user_input)
+                        user_input = retry_feedback
+                        
+                        # Add retry feedback as message for context
+                        self.current_state["messages"].append(HumanMessage(content=retry_feedback))
+                        
+                        # Continue to next iteration of retry loop
+                        continue
+                
+                # Calculate latency
+                end_time = datetime.now()
+                latency_seconds = (end_time - start_time).total_seconds()
+                
+                # After streaming completes, always save AIMessage (even if empty - tool-only responses)
+                retry_count = self.current_state.get("retry_count", 0)
+                self.current_state["messages"].append(AIMessage(
+                    content=response_content or "(tool execution only)",
+                    additional_kwargs={
+                        "model": self.model.model_name,
+                        "temperature": self.model.temperature,
                         "latency_seconds": latency_seconds,
-                        "turn_number": len(self.current_state["messages"]) // 2,
-                        "session_message_count": len(self.current_state["messages"]),
-                        "tool_call_count": tool_call_count
+                        "tool_call_count": tool_call_count,
+                        "retry_count": retry_count,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                ))
+            
+                # Add tags and metadata for LangSmith filtering
+                self._add_trace_tags_and_metadata(original_user_input, response_content, latency_seconds, success=True, tool_call_count=tool_call_count)
+                
+                # Update state timestamp
+                self.current_state = update_state_timestamp(self.current_state)
+                
+                # Save state
+                memory_manager.save_state(self.current_session_id, self.current_state)
+                
+                # Yield completion event with metadata
+                yield {
+                    "event": "on_complete",
+                    "data": {
+                        "success": True,
+                        "session_id": self.current_session_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "metadata": {
+                            "latency_seconds": latency_seconds,
+                            "turn_number": len(self.current_state["messages"]) // 2,
+                            "session_message_count": len(self.current_state["messages"]),
+                            "tool_call_count": tool_call_count,
+                            "retry_count": retry_count
+                        }
                     }
                 }
-            }
+                
+                # Success - break out of retry loop
+                break
             
-        except Exception as e:
-            # Calculate latency even for errors
-            end_time = datetime.now()
-            latency_seconds = (end_time - start_time).total_seconds()
-            
-            # Add tags for error tracking (tool_call_count not available on error)
-            self._add_trace_tags_and_metadata(user_input, str(e), latency_seconds, success=False, error_type=type(e).__name__, tool_call_count=0)
-            
-            # Yield error event
-            yield {
-                "event": "on_error",
-                "data": {
+            except Exception as e:
+                # Store error info
+                error_info = {
                     "error": str(e),
-                    "error_type": type(e).__name__,
-                    "session_id": self.current_session_id,
-                    "metadata": {
-                        "latency_seconds": latency_seconds,
-                        "tool_call_count": 0
+                    "error_type": type(e).__name__
+                }
+                
+                # Increment retry count and add to history
+                self.current_state = increment_retry_count(self.current_state, error_info)
+                current_retry = self.current_state.get("retry_count", 0)
+                
+                # Check if we should retry
+                should_retry = (
+                    auto_retry_enabled and 
+                    current_retry <= max_retries
+                )
+                
+                if should_retry:
+                    # Yield retry notification
+                    yield {
+                        "event": "on_retry",
+                        "data": {
+                            "retry_count": current_retry,
+                            "max_retries": max_retries,
+                            "error_type": error_info["error_type"],
+                            "error_preview": str(e)[:200]
+                        }
                     }
-                }
-            }
-            
-            # Update state with error
-            if self.current_state:
-                self.current_state["last_error"] = {
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "timestamp": datetime.now().isoformat()
-                }
+                    
+                    # Format retry feedback
+                    retry_feedback = self._format_retry_feedback(error_info, original_user_input)
+                    user_input = retry_feedback
+                    
+                    # Add retry feedback as message
+                    self.current_state["messages"].append(HumanMessage(content=retry_feedback))
+                    
+                    # Continue to next iteration
+                    continue
+                else:
+                    # No more retries - yield error
+                    end_time = datetime.now()
+                    latency_seconds = (end_time - start_time).total_seconds()
+                    
+                    # Add tags for error tracking
+                    self._add_trace_tags_and_metadata(original_user_input, str(e), latency_seconds, success=False, error_type=type(e).__name__, tool_call_count=0)
+                    
+                    # Yield error event
+                    yield {
+                        "event": "on_error",
+                        "data": {
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "session_id": self.current_session_id,
+                            "metadata": {
+                                "latency_seconds": latency_seconds,
+                                "tool_call_count": 0,
+                                "retry_count": current_retry - 1 if current_retry > 0 else 0,
+                                "max_retries_exceeded": current_retry > max_retries
+                            }
+                        }
+                    }
+                    
+                    # Update state with error
+                    if self.current_state:
+                        self.current_state["last_error"] = {
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    
+                    # Exit retry loop
+                    break
     
     def get_session_info(self) -> Dict[str, Any]:
         """Get information about the current session."""

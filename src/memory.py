@@ -51,6 +51,8 @@ class SimpleMemoryManager:
                 "current_files": state.get("current_files", {}),
                 "last_command_output": state.get("last_command_output"),
                 "last_error": state.get("last_error"),
+                "retry_count": state.get("retry_count", 0),
+                "retry_history": state.get("retry_history", []),
                 "session_id": state.get("session_id"),
                 "created_at": str(state.get("created_at")),
                 "last_updated": str(state.get("last_updated"))
@@ -87,6 +89,8 @@ class SimpleMemoryManager:
                     "current_files": data.get("current_files", {}),
                     "last_command_output": data.get("last_command_output"),
                     "last_error": data.get("last_error"),
+                    "retry_count": data.get("retry_count", 0),
+                    "retry_history": data.get("retry_history", []),
                     "session_id": data.get("session_id"),
                     "created_at": data.get("created_at"),
                     "last_updated": data.get("last_updated")
