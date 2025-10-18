@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from langchain_core.tools import tool
-from .state import ToolResult
 from .config import config
 from .git_tools import GIT_TOOLS
 
@@ -24,32 +23,6 @@ def _resolve_path(file_path: str) -> str:
         # Make path relative to workspace
         workspace_path = config.get_workspace_path()
         return str(workspace_path / path)
-
-
-def safe_execute(tool_func, *args, **kwargs) -> ToolResult:
-    """Safely execute a tool function with error handling."""
-    try:
-        result = tool_func(*args, **kwargs)
-        return ToolResult(
-            success=True,
-            data=result,
-            error=None,
-            error_type=None,
-            suggestions=None,
-            metadata={"timestamp": datetime.now().isoformat()}
-        )
-    except Exception as e:
-        return ToolResult(
-            success=False,
-            data=None,
-            error=str(e),
-            error_type=type(e).__name__,
-            suggestions=None,
-            metadata={
-                "traceback": traceback.format_exc(),
-                "timestamp": datetime.now().isoformat()
-            }
-        )
 
 
 @tool
